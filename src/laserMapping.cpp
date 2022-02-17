@@ -610,6 +610,15 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
     q.setZ(odomAftMapped.pose.pose.orientation.z);
     transform.setRotation( q );
     br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
+    {
+        // write to file:
+        static std::ofstream posesFile ("./fast_lio_after_map_poses.txt");
+        if( posesFile.is_open() )
+        {
+             posesFile << (odomAftMapped.header.stamp.toNSec()) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
+                       << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() <<"\n";
+        }
+    }
 }
 
 void publish_path(const ros::Publisher pubPath)
