@@ -2,6 +2,7 @@
 <!-- Launch file for ouster OS0-128 LiDAR -->
 
     <arg name="rviz" default="false" />
+    <param name="/use_sim_time" value="true" />
 
     <rosparam command="load" file="$(find fast_lio)/config/ouster128.yaml" />
 
