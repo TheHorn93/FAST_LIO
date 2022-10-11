@@ -1,7 +1,7 @@
 common:
     lid_topic:  "/os_cloud_node/points"
     #imu_topic:  "/os_cloud_node/imu"
-    imu_topic:  "/dji_sdk/imu"
+    imu_topic:  "/alphasense_driver_ros/imu"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     
 preprocess:
@@ -19,35 +19,10 @@ mapping:
     det_range:     55.0
     extrinsic_est_en:  true   # true: enable the online estimation of IMU-LiDAR extrinsic
     #id 
-    #extrinsic_T: [ 0.0, 0.0, 0.0 ]
-    #extrinsic_R: [ 1,  0,  0,
-    #               0,  1,  0,
-    #               0,  0,  1]
-    
-    # m210 - drz2
-    extrinsic_T: [ 0.0982146, 0.0, -0.210836 ]
-    extrinsic_R: [ 0, -1,  0,
-                  -1,  0,  0,
-                   0,  0, -1]
-    # m210 - mbzirc8
-    #extrinsic_T: [ 0.0982146, 0.031775, -0.210836 ]
-    #extrinsic_R: [ 0, -1,  0,
-    #              -1,  0,  0,
-    #               0,  0, -1]
-    #extrinsic_T: [ 0.0805585, 0.0146624, -0.214918 ] # r1
-    #extrinsic_R: [ 0.0122792, -0.99989,    -0.00837646,
-    #              -0.9999,    -0.0122198,  -0.00711093,
-    #               0.00700779, 0.00846294, -0.99994]
-    #extrinsic_T: [ 0.06769, 0.00372607, -0.218236 ] # r2
-    #extrinsic_R: [ 0.015141, -0.999804,  -0.0127657,
-    #              -0.999831, -0.0150053, -0.0106552,
-    #               0.0104615, 0.0129248, -0.999862]
-    # m300
-    #extrinsic_T: [ 0.06, 0.0, 0.0 ]
-    #extrinsic_R: [ -1,  0,  0,
-    #                0, -1,  0,
-    #                0,  0,  1]
-
+    extrinsic_T: [ 0.0, 0.0, 0.0 ]
+    extrinsic_R: [ 1,  0,  0,
+                   0,  1,  0,
+                   0,  0,  1]    
 publish:
     path_en:  true
     scan_publish_en:  true       # false: close all the point cloud output
