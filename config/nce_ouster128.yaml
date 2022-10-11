@@ -21,8 +21,8 @@ mapping:
     #id 
     extrinsic_T: [ 0.0, 0.0, 0.0 ]
     extrinsic_R: [ 1,  0,  0,
-                   0,  1,  0,
-                   0,  0,  1]    
+                   0, -1,  0,
+                   0,  0, -1]    
 publish:
     path_en:  true
     scan_publish_en:  true       # false: close all the point cloud output
