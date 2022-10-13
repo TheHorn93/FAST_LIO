@@ -83,6 +83,7 @@ condition_variable sig_buffer;
 string root_dir = ROOT_DIR;
 string map_file_path, lid_topic, imu_topic;
 
+int64_t lidar_ts_ns = 0;
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
@@ -93,12 +94,14 @@ int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudVal
 bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+std::shared_ptr<std::ofstream> posesFile = nullptr;
 
 vector<vector<int>>  pointSearchInd_surf; 
 vector<BoxPointType> cub_needrm;
 vector<PointVector>  Nearest_Points; 
 vector<double>       extrinT(3, 0.0);
 vector<double>       extrinR(9, 0.0);
+deque<int64_t>                    time_buffer_ns;
 deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
@@ -288,6 +291,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
+    time_buffer_ns.push_back(msg->header.stamp.toNSec());
     time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
     s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
@@ -324,6 +328,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
+    time_buffer_ns.push_back(msg->header.stamp.toNSec());
     time_buffer.push_back(last_timestamp_lidar);
     
     s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
@@ -373,6 +378,7 @@ bool sync_packages(MeasureGroup &meas)
     {
         meas.lidar = lidar_buffer.front();
         double  lidar_beg_time = time_buffer.front();
+        lidar_ts_ns = time_buffer_ns.front();
         if ( has_lidar_end_time_ )
         {
             lidar_end_time = lidar_beg_time;
@@ -434,6 +440,7 @@ bool sync_packages(MeasureGroup &meas)
     }
 
     lidar_buffer.pop_front();
+    time_buffer_ns.pop_front();
     time_buffer.pop_front();
     lidar_pushed = false;
     return true;
@@ -637,10 +644,10 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
     br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
     {
         // write to file:
-        static std::ofstream posesFile ("./fast_lio_after_map_poses.txt");
-        if( posesFile.is_open() )
+        if ( ! posesFile ) posesFile = std::make_shared<std::ofstream>("./fast_lio_after_map_poses.txt");
+        if( posesFile && posesFile->is_open() )
         {
-             posesFile << (odomAftMapped.header.stamp.toNSec()) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
+             posesFile << (lidar_ts_ns) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
                        << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() <<"\n";
         }
     }
