@@ -1084,6 +1084,7 @@ int main(int argc, char** argv)
         }
         fclose(fp2);
     }
+    if ( posesFile ) posesFile->close();
 
     return 0;
 }
