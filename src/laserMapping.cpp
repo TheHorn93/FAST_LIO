@@ -647,8 +647,8 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
         if ( ! posesFile ) posesFile = std::make_shared<std::ofstream>("./fast_lio_after_map_poses.txt");
         if( posesFile && posesFile->is_open() )
         {
-             posesFile << (lidar_ts_ns) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
-                       << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() <<"\n";
+             (*posesFile) << (lidar_ts_ns) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
+                          << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() <<"\n";
         }
     }
 }
