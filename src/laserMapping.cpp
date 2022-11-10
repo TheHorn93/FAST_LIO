@@ -91,7 +91,7 @@ double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_en
 int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
 bool   point_selected_surf[100000] = {0};
-bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
+bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 
 vector<vector<int>>  pointSearchInd_surf; 
@@ -372,23 +372,46 @@ bool sync_packages(MeasureGroup &meas)
     if(!lidar_pushed)
     {
         meas.lidar = lidar_buffer.front();
-        meas.lidar_beg_time = time_buffer.front();
-        if (meas.lidar->points.size() <= 1) // time too little
+        double  lidar_beg_time = time_buffer.front();
+        if ( has_lidar_end_time_ )
         {
-            lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
-            ROS_WARN("Too few input point cloud!\n");
-        }
-        else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
-        {
-            lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
+            lidar_end_time = lidar_beg_time;
+            if (meas.lidar->points.size() <= 1) // time too little
+            {
+                lidar_beg_time = lidar_end_time - lidar_mean_scantime;
+                ROS_WARN("Too few input point cloud!\n");
+            }
+            else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
+            {
+                lidar_beg_time = lidar_end_time - lidar_mean_scantime;
+            }
+            else
+            {
+                scan_num ++;
+                lidar_beg_time = lidar_end_time - meas.lidar->points.back().curvature / double(1000);
+                lidar_mean_scantime += (meas.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+            }
         }
         else
         {
-            scan_num ++;
-            lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-            lidar_mean_scantime += (meas.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+            if (meas.lidar->points.size() <= 1) // time too little
+            {
+                lidar_end_time = lidar_beg_time + lidar_mean_scantime;
+                ROS_WARN("Too few input point cloud!\n");
+            }
+            else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
+            {
+                lidar_end_time = lidar_beg_time + lidar_mean_scantime;
+            }
+            else
+            {
+                scan_num ++;
+                lidar_end_time = lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
+                lidar_mean_scantime += (meas.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+            }
         }
 
+        meas.lidar_beg_time = lidar_beg_time;
         meas.lidar_end_time = lidar_end_time;
 
         lidar_pushed = true;
@@ -761,7 +784,7 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
-
+    bool dont_compensate = false;
     nh.param<bool>("publish/path_en",path_en, true);
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
@@ -787,6 +810,8 @@ int main(int argc, char** argv)
     nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, US);
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
+    nh.param<bool>("dont_compensate", dont_compensate, false);
+    nh.param<bool>("has_lidar_end_time", has_lidar_end_time_, false);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
     nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, true);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
@@ -823,6 +848,7 @@ int main(int argc, char** argv)
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu->set_dont_compensate(dont_compensate);
 
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);

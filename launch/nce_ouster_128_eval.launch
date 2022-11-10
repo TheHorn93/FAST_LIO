@@ -6,6 +6,8 @@
 
     <rosparam command="load" file="$(find fast_lio)/config/nce_ouster128.yaml" />
 
+    <param name="dont_compensate" type="bool" value="false"/>
+    <param name="has_lidar_end_time" type="bool" value="false"/>
     <param name="feature_extract_enable" type="bool" value="false"/>
     <param name="point_filter_num" type="int" value="4"/>
     <param name="max_iteration" type="int" value="3" />
