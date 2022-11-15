@@ -93,7 +93,7 @@ int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count =
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
 bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
-bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, store_compensated_ = false;
 std::shared_ptr<std::ofstream> posesFile = nullptr;
 
 vector<vector<int>>  pointSearchInd_surf; 
@@ -104,7 +104,10 @@ vector<double>       extrinR(9, 0.0);
 deque<int64_t>                    time_buffer_ns;
 deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
+deque<PointCloudXYZI::Ptr>        lidar_buffer_raw;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
+PointCloudXYZI::Ptr meas_lidar_raw = nullptr;
+PointCloudXYZI::Ptr meas_lidar_comp = nullptr;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -139,6 +142,7 @@ geometry_msgs::Quaternion geoQuat;
 geometry_msgs::PoseStamped msg_body_pose;
 
 shared_ptr<Preprocess> p_pre(new Preprocess());
+shared_ptr<Preprocess> p_pre_raw(new Preprocess());
 shared_ptr<ImuProcess> p_imu(new ImuProcess());
 
 void SigHandle(int sig)
@@ -286,11 +290,18 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
+        lidar_buffer_raw.clear();
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
+    if ( store_compensated_ && p_pre_raw )
+    {
+        PointCloudXYZI::Ptr ptr_raw(new PointCloudXYZI());
+        p_pre_raw->process(msg, ptr_raw);
+        lidar_buffer_raw.push_back(ptr_raw);
+    }
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
     time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
@@ -417,6 +428,17 @@ bool sync_packages(MeasureGroup &meas)
             }
         }
 
+        if ( ! lidar_buffer_raw.empty() )
+        {
+            meas_lidar_raw = lidar_buffer_raw.front();
+            meas_lidar_comp = nullptr;
+        }
+        else
+        {
+            meas_lidar_raw = nullptr;
+            meas_lidar_comp = nullptr;
+        }
+
         meas.lidar_beg_time = lidar_beg_time;
         meas.lidar_end_time = lidar_end_time;
 
@@ -440,6 +462,7 @@ bool sync_packages(MeasureGroup &meas)
     }
 
     lidar_buffer.pop_front();
+    if ( ! lidar_buffer_raw.empty() ) lidar_buffer_raw.pop_front();
     time_buffer_ns.pop_front();
     time_buffer.pop_front();
     lidar_pushed = false;
@@ -552,6 +575,34 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
             prev_pcd_end_time = lidar_end_time * 1e9;
         }
     }
+
+    if ( store_compensated_ && meas_lidar_comp )
+    {
+        static int scan_wait_num = 0;
+        static uint64_t prev_pcd_end_time = first_lidar_time * 1e9;
+        scan_wait_num ++;
+
+        constexpr bool use_full = true;
+        PointCloudXYZI::Ptr cloud ( use_full ? meas_lidar_comp : feats_undistort );
+
+        const int size = cloud->points.size();
+        if ( scan_wait_num >= pcd_save_interval && size > 0 )
+        {
+            PointCloudXYZI::Ptr laserCloudWorld( new PointCloudXYZI(size, 1));
+
+            for (int i = 0; i < size; ++i)
+            {
+                RGBpointBodyToWorld( &cloud->points[i], &laserCloudWorld->points[i]);
+            }
+
+            const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/") + to_string(prev_pcd_end_time) + string(".pcd"));
+            pcl::PCDWriter pcd_writer;
+            cout << "current scan saved to /PCD_COMP/" << all_points_dir << endl;
+            pcd_writer.writeBinary(all_points_dir, *laserCloudWorld);
+            scan_wait_num = 0;
+            prev_pcd_end_time = lidar_end_time * 1e9;
+        }
+    }
 }
 
 void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
@@ -648,7 +699,7 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
         if( posesFile && posesFile->is_open() )
         {
              (*posesFile) << (lidar_ts_ns) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
-                          << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() <<"\n";
+                          << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
         }
     }
 }
@@ -818,6 +869,7 @@ int main(int argc, char** argv)
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("dont_compensate", dont_compensate, false);
+    nh.param<bool>("store_compensated", store_compensated_, false);
     nh.param<bool>("has_lidar_end_time", has_lidar_end_time_, false);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
     nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, true);
@@ -827,6 +879,17 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+
+    if ( store_compensated_ )
+    {
+        p_pre_raw->blind = p_pre->blind;
+        p_pre_raw->lidar_type = p_pre->lidar_type;
+        p_pre_raw->N_SCANS = p_pre->N_SCANS;
+        p_pre_raw->time_unit = p_pre->time_unit;
+        p_pre_raw->SCAN_RATE = p_pre->SCAN_RATE;
+        p_pre_raw->point_filter_num = 1;
+        p_pre_raw->feature_enabled = false;
+    }
     
     path.header.stamp    = ros::Time::now();
     path.header.frame_id ="camera_init";
@@ -920,6 +983,8 @@ int main(int argc, char** argv)
             t0 = omp_get_wtime();
 
             p_imu->Process(Measures, kf, feats_undistort);
+
+
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
@@ -927,6 +992,13 @@ int main(int argc, char** argv)
             {
                 ROS_WARN("No point, skip this scan!\n");
                 continue;
+            }
+
+            if ( store_compensated_ && meas_lidar_raw )
+            {
+                meas_lidar_comp = PointCloudXYZI::Ptr(new PointCloudXYZI());
+                //(*meas_lidar_comp) = *meas_lidar_raw;
+                p_imu->UndistortRawPcl( meas_lidar_raw, kf, meas_lidar_comp );
             }
 
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
@@ -1012,7 +1084,7 @@ int main(int argc, char** argv)
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath);
-            if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
+            if (scan_pub_en || pcd_save_en || store_compensated_ )  publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             // publish_effect_world(pubLaserCloudEffect);
             // publish_map(pubLaserCloudMap);

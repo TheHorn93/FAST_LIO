@@ -51,6 +51,7 @@ class ImuProcess
   void set_dont_compensate( const bool & dont_compensate ) { dont_compensate_ = dont_compensate; }
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
+  void UndistortRawPcl(const PointCloudXYZI::Ptr &meas_lidar, const esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr &pcl_out);
 
   ofstream fout_imu;
   V3D cov_acc;
@@ -211,6 +212,76 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
   kf_state.change_P(init_P);
   last_imu_ = meas.imu.back();
 
+}
+
+void ImuProcess::UndistortRawPcl(const PointCloudXYZI::Ptr &meas_lidar, const esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr & cl_out )
+{
+  if ( ! meas_lidar || IMUpose.empty() || imu_need_init_ ) return;
+
+  /*** sort point clouds by offset time ***/
+  PointCloudXYZI & pcl_out = *cl_out;
+  pcl_out = *(meas_lidar);
+  sort(pcl_out.points.begin(), pcl_out.points.end(), time_list);
+  //cout << "sorted." << endl;
+  // cout<<"[ IMU Process ]: Process lidar from "<<pcl_beg_time<<" to "<<pcl_end_time<<", " \
+  //          <<meas.imu.size()<<" imu msgs from "<<imu_beg_time<<" to "<<imu_end_time<<endl;
+
+  /*** Initialize IMU pose ***/
+  const state_ikfom imu_state = kf_state.get_x();
+  /*** forward propagation at each imu point ***/
+  V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
+  M3D R_imu;
+
+  double dt = 0;
+  /*** undistort each lidar point (backward propagation) ***/
+  if (pcl_out.points.begin() == pcl_out.points.end()) return;
+
+  //cout << "iterate now." << endl;
+  auto it_pcl = pcl_out.points.end() - 1;
+  for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--)
+  {
+    auto head = it_kp - 1;
+    auto tail = it_kp;
+
+
+//  auto it_pcl = pcl_out.points.rbegin();
+//  for (auto it_kp = IMUpose.rbegin(); it_kp != IMUpose.rend(); ++it_kp)
+//  {
+//    auto head = it_kp + 1;
+//    if ( head == IMUpose.rend() ) break;
+//    auto tail = it_kp;
+    R_imu<<MAT_FROM_ARRAY(head->rot);
+    // cout<<"head imu acc: "<<acc_imu.transpose()<<endl;
+    vel_imu<<VEC_FROM_ARRAY(head->vel);
+    pos_imu<<VEC_FROM_ARRAY(head->pos);
+    acc_imu<<VEC_FROM_ARRAY(tail->acc);
+    angvel_avr<<VEC_FROM_ARRAY(tail->gyr);
+
+    for(; it_pcl->curvature / double(1000) > head->offset_time; it_pcl --)
+    //for(; it_pcl->curvature / double(1000) > head->offset_time; ++it_pcl)
+    {
+      dt = it_pcl->curvature / double(1000) - head->offset_time;
+
+      /* Transform to the 'end' frame, using only the rotation
+       * Note: Compensation direction is INVERSE of Frame's moving direction
+       * So if we want to compensate a point at timestamp-i to the frame-e
+       * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is represented in global frame */
+      M3D R_i(R_imu * Exp(angvel_avr, dt));
+
+      V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
+      V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
+      V3D P_compensate = imu_state.offset_R_L_I.conjugate() * (imu_state.rot.conjugate() * (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) + T_ei) - imu_state.offset_T_L_I);// not accurate!
+
+      // save Undistorted points and their rotation
+      it_pcl->x = P_compensate(0);
+      it_pcl->y = P_compensate(1);
+      it_pcl->z = P_compensate(2);
+
+      //if (it_pcl == pcl_out.points.rend()) break;
+      if (it_pcl == pcl_out.points.begin()) break;
+    }
+  }
+  //cout << "out done!." << endl;
 }
 
 void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out)
