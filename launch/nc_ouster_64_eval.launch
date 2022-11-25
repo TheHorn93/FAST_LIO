@@ -7,7 +7,7 @@
     <rosparam command="load" file="$(find fast_lio)/config/nc_ouster64.yaml" />
 
     <param name="dont_compensate" type="bool" value="false"/>
-    <param name="store_compensated" type="bool" value="true"/>
+    <param name="store_compensated" type="bool" value="false"/>
     <param name="has_lidar_end_time" type="bool" value="false"/>
     <param name="feature_extract_enable" type="bool" value="false"/>
     <param name="point_filter_num" type="int" value="2"/>
