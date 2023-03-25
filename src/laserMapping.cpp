@@ -53,7 +53,7 @@
 #include <geometry_msgs/Vector3.h>
 #include <livox_ros_driver/CustomMsg.h>
 #include "preprocess.h"
-#include <ikd-Tree/ikd_Tree.h>
+#include <ikd-Tree/ikd-Tree/ikd_Tree.h>
 #include "reflectance_grad.h"
 
 #define INIT_TIME           (0.1)
@@ -91,6 +91,7 @@ bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, store_compensated_ = false;
 std::shared_ptr<std::ofstream> posesFile = nullptr;
+double ref_grad_w = 0.1;
 
 vector<vector<int>>  pointSearchInd_surf;
 vector<BoxPointType> cub_needrm;
@@ -279,6 +280,8 @@ void lasermap_fov_segment()
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
+    //std::cout << "Got pcl" << std::endl;
+
     mtx_buffer.lock();
     scan_count ++;
     double preprocess_start_time = omp_get_wtime();
@@ -519,6 +522,7 @@ PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
 PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
 void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 {
+    //std::cout << "Pub registered" << std::endl;
     if(scan_pub_en)
     {
         PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
@@ -784,6 +788,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     /// Accumulate points in laser rep and associated normvecs for all valid points
     // Result are two point clouds: 1st containing points in laser coor-rep, 2nd containing estimated plane normal vecs as points
     effct_feat_num = 0;
+    std::vector<int> valid_pts;
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
@@ -791,6 +796,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
             corr_normvect->points[effct_feat_num] = normvec->points[i];
             total_residual += res_last[i];
+            valid_pts.push_back(i);
             effct_feat_num ++;
         }
     }
@@ -807,8 +813,9 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     double solve_start_  = omp_get_wtime();
 
     /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
-    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //23
-    ekfom_data.h.resize(effct_feat_num);
+    size_t num_residuals = effct_feat_num*2;
+    ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
+    ekfom_data.h.resize(num_residuals);
 
     /** Create one error point for point_to_plane and one error point for intensity gradient point */
     for (int i = 0; i < effct_feat_num; i++)
@@ -829,6 +836,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
         /*** calculate the Measuremnt Jacobian matrix H ***/
+        //std::cout << "Add ptoplane grad" << std::endl;
         V3D C(s.rot.conjugate() *norm_vec); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
         V3D A(point_crossmat * C); // scale laser point skewsymmat by rotated norm vec
         // If Extrinsic laser -> IMU should be estimated
@@ -853,16 +861,29 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         ekfom_data.h(res_it) = -norm_p.intensity;
 
         /** Add Intensity gradient to kalman state. */
+        //std::cout << "Add intensity grad" << std::endl;
+        int pt_it = valid_pts[i];
+        PointType &point_world = feats_down_world->points[pt_it];
+        PointVector& points_near = Nearest_Points[pt_it];
+
         // get reflectance gradient to surface
         Eigen::Vector3d plane_normal( norm_vec );
+        //std::cout << "Got normal=" << norm_vec << std::endl;
         Eigen::Vector3d ref_grad = reflectance::AttractionCenter::call( point_world, points_near, plane_normal );
+        double grad_length = ref_grad.norm();
+        ref_grad /= grad_length;
 
         // Transform intensity grad: World -> IMU coords
+        //std::cout << "Transform intensity grad" << std::endl;
         Eigen::Vector3d C_ref(s.rot.conjugate() *ref_grad); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
         Eigen::Vector3d A_ref(point_crossmat * C_ref); // scale laser point skewsymmat by rotated norm vec
 
         /** Add vector to state. */
-        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_res[0], ref_res[1], ref_res[2], VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        //std::cout << "Add to state" << std::endl;
+        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0], ref_grad[1], ref_grad[2], VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        ekfom_data.h(res_it+1) = -grad_length *ref_grad_w;
+        //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        //ekfom_data.h(res_it+1) = 0;
     }
     solve_time += omp_get_wtime() - solve_start_;
 }
@@ -907,6 +928,7 @@ int main(int argc, char** argv)
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
+    nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
 
     if ( store_compensated_ )
@@ -1112,6 +1134,7 @@ int main(int argc, char** argv)
             t5 = omp_get_wtime();
 
             /******* Publish points *******/
+            //std::cout << "publish?: " << ( scan_pub_en || pcd_save_en || store_compensated_ ) << std::endl;
             if (path_en)                         publish_path(pubPath);
             if (scan_pub_en || pcd_save_en || store_compensated_ )  publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
