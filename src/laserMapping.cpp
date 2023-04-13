@@ -869,7 +869,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         // get reflectance gradient to surface
         Eigen::Vector3d plane_normal( norm_vec );
         //std::cout << "Got normal=" << norm_vec << std::endl;
-        Eigen::Vector3d ref_grad = reflectance::AttractionCenter::call( point_world, points_near, plane_normal );
+        Eigen::Vector3d ref_grad = reflectance::IrregularGrid::call( point_world, points_near, plane_normal );
         double grad_length = ref_grad.norm();
         ref_grad /= grad_length;
 
@@ -880,8 +880,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
         /** Add vector to state. */
         //std::cout << "Add to state" << std::endl;
-        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0], ref_grad[1], ref_grad[2], VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-        ekfom_data.h(res_it+1) = -grad_length *ref_grad_w;
+        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0], ref_grad[1], ref_grad[2], VEC_FROM_ARRAY(A_ref) *ref_grad_w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        ekfom_data.h(res_it+1) = grad_length *ref_grad_w;
         //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
         //ekfom_data.h(res_it+1) = 0;
     }

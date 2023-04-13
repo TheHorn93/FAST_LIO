@@ -206,6 +206,7 @@ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       if (range < (blind * blind)) continue;
       Eigen::Vector3d pt_vec;
       PointType added_pt;
+      // Set internal point cloud from sensor cloud
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;

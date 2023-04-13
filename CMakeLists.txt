@@ -66,7 +66,8 @@ include_directories(
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
-  include)
+  include
+  src)
 
 add_message_files(
   FILES
@@ -88,3 +89,8 @@ add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd-Tree/ik
 add_dependencies(fastlio_mapping ${${PROJECT_NAME}_EXPORTED_TARGETS})
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+
+add_executable(fastlio_test tests/irregular_grid_test.cpp include/ikd-Tree/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+add_dependencies(fastlio_test ${${PROJECT_NAME}_EXPORTED_TARGETS})
+target_link_libraries(fastlio_test ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
+target_include_directories(fastlio_test PRIVATE ${PYTHON_INCLUDE_DIRS})

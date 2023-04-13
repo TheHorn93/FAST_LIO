@@ -9,6 +9,13 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 
+#ifdef DEBUG
+  #define DEBUG_OUT(s) \
+    std::cout << "DEBUG: " << s << std::endl;
+#else
+  #define DEBUG_OUT(s) {};
+#endif // DEBUG
+
 struct EIGEN_ALIGN16 PointType
 {
   PCL_ADD_POINT4D;
