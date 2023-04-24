@@ -746,7 +746,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         point_world.z = p_global(2);
         // Forward all necessary information
         point_world.intensity = point_body.intensity;
-        point_world.reflectance = point_body.reflectance;
+        std::cout << "pt_W_i=" << point_body.intensity << ", pt_W_r=" << point_body.reflectance << std::endl;
+        point_world.reflectance = point_body.intensity;
 
 
         vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
@@ -871,7 +872,10 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         //std::cout << "Got normal=" << norm_vec << std::endl;
         Eigen::Vector3d ref_grad = reflectance::IrregularGrid::call( point_world, points_near, plane_normal );
         double grad_length = ref_grad.norm();
-        ref_grad /= grad_length;
+        if( grad_length > 0.0 )
+        {
+          ref_grad /= grad_length;
+        }
 
         // Transform intensity grad: World -> IMU coords
         //std::cout << "Transform intensity grad" << std::endl;
@@ -880,7 +884,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
         /** Add vector to state. */
         //std::cout << "Add to state" << std::endl;
-        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0], ref_grad[1], ref_grad[2], VEC_FROM_ARRAY(A_ref) *ref_grad_w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0], ref_grad[1], ref_grad[2], VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
         ekfom_data.h(res_it+1) = grad_length *ref_grad_w;
         //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
         //ekfom_data.h(res_it+1) = 0;
@@ -930,6 +934,7 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+    ref_grad_w = std::sqrt( ref_grad_w );
 
     if ( store_compensated_ )
     {

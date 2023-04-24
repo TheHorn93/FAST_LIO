@@ -10,13 +10,13 @@ Eigen::Vector3d projectPtToPlane( const Eigen::Vector3d& pt_pos, const Eigen::Ve
   Eigen::Vector3d pt_offset = pt_pos -plane_anchor;
   double dist = pt_offset.dot( normal );
   DEBUG_OUT( "pt=" << pt_pos << std::endl << "dist=" << dist << std::endl << "pt_out=" << pt_offset -dist *normal );
-  return pt_offset -dist *normal;
+  return pt_pos -dist *normal;
 }
 
 Eigen::Quaterniond getRotationToPlane( const Eigen::Vector3d& plane_normal )
 {
   static Eigen::Vector3d z_axis(0,0,1);
-  return Eigen::Quaterniond().setFromTwoVectors( z_axis, plane_normal );
+  return Eigen::Quaterniond().setFromTwoVectors( plane_normal, z_axis );
 }
 
 using MatchVector = Eigen::Matrix<double, 1, NUM_MATCH_POINTS>;
@@ -71,7 +71,8 @@ class AttractionCenter
       w_sum += divi;
     }
 
-    std::cout << "  ref grad=" << ref_grad/w_sum <<std::endl;
+    if( ref_grad != Eigen::Vector3d(0.0,0.0,0.0) )
+      std::cout << "  ref grad=" << ref_grad/w_sum <<std::endl;
     return ref_grad /w_sum;
   }
 
@@ -156,10 +157,11 @@ public:
     const Eigen::Vector3d pt_pos( pt.x, pt.y, pt.z );
     const Eigen::Vector3d anchor_pos( anchor.x, anchor.y, anchor.z );
 
-    for( size_t p_it=0 ; p_it < NUM_MATCH_POINTS ; ++p_it )
+    for( size_t p_it=0 ;  p_it < NUM_MATCH_POINTS ; ++p_it )
     {
       Eigen::Vector3d pt_near_pos( pts_near[p_it].x, pts_near[p_it].y, pts_near[p_it].z );
-      pts_near_proj.col(p_it) = Eigen::Vector3d( rot_quad *projectPtToPlane( pt_near_pos, anchor_pos, normal ) );
+      pts_near_proj.col(p_it) = rot_quad *projectPtToPlane( pt_near_pos, anchor_pos, normal );
+      //DEBUG_OUT( "point_rot=" << pts_near_proj.col(p_it) << std::endl << std::endl );
     }
     return rot_quad *projectPtToPlane( pt_pos, anchor_pos, normal );
   }
@@ -176,6 +178,7 @@ public:
     mat_a.col(0) = mat_a.col(3).array() * mat_a.col(3).array();
     mat_a.col(1) = mat_a.col(3).array() * mat_a.col(4).array();
     mat_a.col(2) = mat_a.col(4).array() * mat_a.col(4).array();
+    DEBUG_OUT( pts_near_proj << std::endl );
 
     Eigen::Matrix<double,mat_p_size,mat_p_size> mat_p = Eigen::Matrix<double,mat_p_size,mat_p_size>::Zero();
     mat_p.topLeftCorner<3,3>().diagonal().setOnes();
@@ -206,7 +209,7 @@ public:
 
   static double getIntensityFromPosOnPlane( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda )
   {
-    DEBUG_OUT( "lambda=" << lambda << std::endl );
+    //DEBUG_OUT( "lambda=" << lambda << std::endl );
     Eigen::Matrix<double, 6, 1> pt_params;
     pt_params[0] = pt_query[0] *pt_query[0];
     pt_params[1] = pt_query[0] *pt_query[1];
@@ -214,6 +217,7 @@ public:
     pt_params[3] = pt_query[0];
     pt_params[4] = pt_query[1];
     pt_params[5] = 1;
+    //DEBUG_OUT( "ref=" << lambda.dot(pt_params) << std::endl );
     return lambda.dot(pt_params);
   }
 
@@ -232,11 +236,11 @@ public:
     pt_params_y[1] = pt_query[0]; // axy -> ax
     pt_params_y[2] = 1; // by -> b
 
-    DEBUG_OUT( "grads=" << grads << std::endl );
-    DEBUG_OUT( "x=" << pt_params_x << ", y=" << pt_params_y << std::endl );
+    //DEBUG_OUT( "grads=" << grads << std::endl );
+    //DEBUG_OUT( "x=" << pt_params_x << ", y=" << pt_params_y << std::endl );
     grad[0] = grads.col(0).dot( pt_params_x );
     grad[1] = grads.col(1).dot( pt_params_y );
-    DEBUG_OUT( "grad=" << grad << std::endl );
+    //DEBUG_OUT( "grad=" << grad << std::endl );
 
     return grad;
   }
@@ -247,6 +251,7 @@ public:
     Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
     Eigen::Quaterniond rot_quad = getRotationToPlane( normal );
     Eigen::Vector3d pt_pos_rot = transformTo2DPlane( pt, pts_near, normal, rot_quad, pts_near_proj );
+    //DEBUG_OUT( "qpt=" << pt_pos_rot << std::endl << std::endl );
 
     Eigen::Matrix<double, mat_p_size, 1> lambda_full = getPolynomial( pts_near, pts_near_proj );
     Eigen::Matrix<double, 6, 1> lambda = lambda_full.head<6>();
@@ -255,7 +260,16 @@ public:
     Eigen::Matrix<double, 3, 2> mat_grad = getGradientMat( lambda );
     Eigen::Vector3d grad_on_plane = getIntensityGradOnPlane( pt_pos_rot, mat_grad );
 
-    return rot_quad.conjugate() *grad_on_plane *(-pt.reflectance +int_at_pos);
+    Eigen::Vector3d grad_out = rot_quad.conjugate() *(grad_on_plane *(-pt.reflectance +int_at_pos));
+    DEBUG_OUT( std::endl << "Grad_in_Plane:" << grad_on_plane *(-pt.reflectance +int_at_pos) << std::endl << "norm=" << grad_on_plane.norm() );
+    if( grad_out != Eigen::Vector3d(0.0,0.0,0.0) )
+    {
+      std::cout << std::endl;
+      std::cout << "ref_delta=r_pt(" << -pt.reflectance << ") -r_int(" << int_at_pos << ") = " <<-pt.reflectance +int_at_pos << std::endl;
+      std::cout << "Grad: " << rot_quad.conjugate() *grad_on_plane *(-pt.reflectance +int_at_pos) << std::endl;
+    }
+
+    return grad_out;
   }
 };
 
