@@ -47,7 +47,7 @@ void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, Point
   *pcl_out = pl_surf;
 }
 
-void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+void Preprocess::process(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
   switch (time_unit)
   {
@@ -71,7 +71,7 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
   switch (lidar_type)
   {
   case OUST64:
-    oust64_handler(msg);
+    oust64_handler(*(PCLFilter<ouster_ros::Point>*)filter, msg);
     break;
 
   case VELO16:
@@ -182,15 +182,20 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   }
 }
 
-void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   static constexpr double max_ref = std::pow( 2, 16 )-1;
 
+  ROS_INFO_STREAM( "Ouster Handler" );
   pl_surf.clear();
   pl_corn.clear();
   pl_full.clear();
   pcl::PointCloud<ouster_ros::Point> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
+
+  std::vector<float> new_int;
+  input_filter.normalizeIntensity( pl_orig, new_int );
+  input_filter.filterOutlierCloud( pl_orig, new_int );
   int plsize = pl_orig.size();
   pl_corn.reserve(plsize);
   pl_surf.reserve(plsize);
@@ -212,8 +217,8 @@ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
-      added_pt.intensity = pl_orig.points[i].intensity /max_ref;
-      added_pt.reflectance = pl_orig.points[i].reflectivity /max_ref;
+      added_pt.intensity = new_int[i];
+      added_pt.reflectance = new_int[i];
       //std::cout << "int=" << added_pt.intensity << ", ref=" << added_pt.reflectance << std::endl;
       added_pt.gloss = 0;
       added_pt.normal_x = 0;
@@ -260,7 +265,7 @@ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     for (int i = 0; i < pl_orig.points.size(); i++)
     {
       if (i % point_filter_num != 0) continue;
-      if ( std::isnan(pl_orig.points[i].x) || std::isnan(pl_orig.points[i].y) || std::isnan(pl_orig.points[i].z) ) continue;
+      if ( !isValidPoint( pl_orig.points[i] ) ) continue;
 
       double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
 
@@ -271,8 +276,9 @@ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
-      added_pt.intensity = pl_orig.points[i].intensity /max_ref;
-      added_pt.reflectance = pl_orig.points[i].reflectivity/max_ref;
+      //added_pt.intensity = pl_orig.points[i].intensity /max_ref;
+      added_pt.intensity = new_int[i];
+      added_pt.reflectance = new_int[i];
       //std::cout << "    x=" << added_pt.x << ", y=" << added_pt.y << ", z=" << added_pt.z << ", int=" << added_pt.intensity << ", ref=" << added_pt.reflectance << std::endl;
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;

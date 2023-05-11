@@ -55,6 +55,7 @@
 #include "preprocess.h"
 #include <ikd-Tree/ikd-Tree/ikd_Tree.h>
 #include "reflectance_grad.h"
+#include "input_pcl_filter.h"
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -114,6 +115,8 @@ PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
+
+std::unique_ptr<PCLFilterBase> filter_input;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
@@ -293,12 +296,12 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr);
+    p_pre->process(filter_input.get(), msg, ptr);
     lidar_buffer.push_back(ptr);
     if ( store_compensated_ && p_pre_raw )
     {
         PointCloudXYZI::Ptr ptr_raw(new PointCloudXYZI());
-        p_pre_raw->process(msg, ptr_raw);
+        p_pre_raw->process(filter_input.get(), msg, ptr_raw);
         lidar_buffer_raw.push_back(ptr_raw);
     }
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
@@ -746,7 +749,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         point_world.z = p_global(2);
         // Forward all necessary information
         point_world.intensity = point_body.intensity;
-        std::cout << "pt_W_i=" << point_body.intensity << ", pt_W_r=" << point_body.reflectance << std::endl;
+        //std::cout << "pt_W_i=" << point_body.intensity << ", pt_W_r=" << point_body.reflectance << std::endl;
         point_world.reflectance = point_body.intensity;
 
 
@@ -880,11 +883,12 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         // Transform intensity grad: World -> IMU coords
         //std::cout << "Transform intensity grad" << std::endl;
         Eigen::Vector3d C_ref(s.rot.conjugate() *ref_grad); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
-        Eigen::Vector3d A_ref(point_crossmat * C_ref); // scale laser point skewsymmat by rotated norm vec
+        Eigen::Vector3d A_ref(point_crossmat * C_ref *ref_grad_w); // scale laser point skewsymmat by rotated norm vec
 
         /** Add vector to state. */
         //std::cout << "Add to state" << std::endl;
-        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0], ref_grad[1], ref_grad[2], VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
+                                                   VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
         ekfom_data.h(res_it+1) = grad_length *ref_grad_w;
         //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
         //ekfom_data.h(res_it+1) = 0;
@@ -918,9 +922,22 @@ int main(int argc, char** argv)
     nh.param<double>("mapping/b_acc_cov",b_acc_cov,0.0001);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
+    switch( p_pre->lidar_type )
+    {
+      case LID_TYPE::OUST64:
+        filter_input = std::make_unique<PCLFilter<ouster_ros::Point>>();
+        break;
+      default:
+        return -1;
+    }
     nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
     nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, US);
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
+    nh.param<int>("point_filter/width", filter_input->getParams().width, 1024);
+    nh.param<int>("point_filter/height", filter_input->getParams().height, 128);
+    nh.param<int>("point_filter/w_filter_size", filter_input->getParams().w_filter_size, 1);
+    nh.param<int>("point_filter/h_filter_size", filter_input->getParams().h_filter_size, 1);
+    nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("dont_compensate", dont_compensate, false);
     nh.param<bool>("store_compensated", store_compensated_, false);
@@ -935,6 +952,8 @@ int main(int argc, char** argv)
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
     ref_grad_w = std::sqrt( ref_grad_w );
+    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
+    ROS_WARN_STREAM( "runtime_pos_log = " << runtime_pos_log ? "true" : "false" );
 
     if ( store_compensated_ )
     {
@@ -995,6 +1014,7 @@ int main(int argc, char** argv)
         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
 
     /*** ROS subscribe initialization ***/
+    ROS_INFO_STREAM( "Subscribing:\n" << "  lidar_topic=" << lid_topic << "\n  imu_topic=" << imu_topic << std::endl );
     ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
         nh.subscribe(lid_topic, 10, livox_pcl_cbk) : \
         nh.subscribe(lid_topic, 2, standard_pcl_cbk);

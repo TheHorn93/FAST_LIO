@@ -85,12 +85,19 @@ catkin_package(
   INCLUDE_DIRS
 )
 
-add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+set(MY_SRC
+	src/preprocess.cpp 
+	src/input_pcl_filter.cpp
+	src/reflectance_grad.cpp
+)
+add_library( ${CMAKE_PROJECT_NAME}_libs SHARED ${MY_SRC} )
+
+add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd-Tree/ikd_Tree.cpp)
 add_dependencies(fastlio_mapping ${${PROJECT_NAME}_EXPORTED_TARGETS})
-target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
+target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${CMAKE_PROJECT_NAME}_libs)
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
-add_executable(fastlio_test tests/irregular_grid_test.cpp include/ikd-Tree/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+add_executable(fastlio_test tests/irregular_grid_test.cpp include/ikd-Tree/ikd-Tree/ikd_Tree.cpp)
 add_dependencies(fastlio_test ${${PROJECT_NAME}_EXPORTED_TARGETS})
-target_link_libraries(fastlio_test ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
+target_link_libraries(fastlio_test ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${CMAKE_PROJECT_NAME}_libs)
 target_include_directories(fastlio_test PRIVATE ${PYTHON_INCLUDE_DIRS})
