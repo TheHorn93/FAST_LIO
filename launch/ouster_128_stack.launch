@@ -1,12 +1,13 @@
 <launch>
 <!-- Launch file for ouster OS0-128 LiDAR -->
 
-    <include file="$(find fast_lio)/launch/drz_ouster_128_eval.launch"/>
+    <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch"/>
     
+	  <arg name="data_set" default="nc_math/" />
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
-    <arg name="folder" value="$(arg data_path)/nc_courtyard/" />
+    <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
     
-    <arg name="grad_w" value="0.000001" />
+    <arg name="grad_w" default="0.0" />
     <param name="ref_grad_w" type="double" value="$(arg grad_w)"/>
     <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
     <node pkg="rosbag" type="record" name="record_traj" args="/Odometry -O $(arg out_bag)" />

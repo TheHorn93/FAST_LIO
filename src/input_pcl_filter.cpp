@@ -22,11 +22,11 @@ struct PointIntensity<ouster_ros::Point>
 
   static float get( const typename PCLFilter<_PtTp>::PointCloudTp& pc_in, size_t pt_it )
   {
-    return pc_in[pt_it].ambient;
+    return pc_in[pt_it].reflectivity;
   }
   static void set( typename PCLFilter<_PtTp>::PointCloudTp& pc_in, size_t pt_it, float new_val )
   {
-    pc_in[pt_it].ambient = new_val;
+    pc_in[pt_it].reflectivity = new_val;
   }
 
   static constexpr float max_val = std::pow(2,16)-1;

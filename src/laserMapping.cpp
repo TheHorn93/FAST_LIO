@@ -878,6 +878,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         if( grad_length > 0.0 )
         {
           ref_grad /= grad_length;
+          //std::cout << grad_length << ", ";
         }
 
         // Transform intensity grad: World -> IMU coords
