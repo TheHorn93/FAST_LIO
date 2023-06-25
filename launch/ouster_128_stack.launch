@@ -1,19 +1,30 @@
 <launch>
 <!-- Launch file for ouster OS0-128 LiDAR -->
 
-    <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch"/>
+    <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch">
+
+    </include>
     
-	  <arg name="data_set" default="nc_math/" />
+    <arg name="num_filter_points" default="4"/>
+    <arg name="size_surf" default="0.5"/>
+    <arg name="size_map" default="0.5"/>
+    <arg name="use_ambient" default="false"/>
+
+	<arg name="data_set" default="nc_math/" />
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
     <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
     
     <arg name="grad_w" default="0.0" />
     <param name="ref_grad_w" type="double" value="$(arg grad_w)"/>
+    <param name="filter_size_surf" type="double" value="$(arg size_surf)" />
+    <param name="filter_size_map" type="double" value="$(arg size_map)" />
+    <param name="point_filter_num" type="int" value="$(arg num_filter_points)"/>
+    <param name="filter_use_ambient" type="bool" value="$(arg use_ambient)"/>
     <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
-    <node pkg="rosbag" type="record" name="record_traj" args="/Odometry -O $(arg out_bag)" />
+    <!-- node pkg="rosbag" type="record" name="record_traj" args="/Odometry -O $(arg out_bag)" / -->
     
     <arg name="bag_path" value="$(arg folder)/raw_data.bag"/>
     <arg name="bag_args" value="--clock --start=5 --delay=2 --rate=0.5"/>
-    <node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)"/>
+    <node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)" required="true"/>
 
 </launch>

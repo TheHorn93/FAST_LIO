@@ -71,7 +71,10 @@ void Preprocess::process(const PCLFilterBase *const filter, const sensor_msgs::P
   switch (lidar_type)
   {
   case OUST64:
-    oust64_handler(*(PCLFilter<ouster_ros::Point>*)filter, msg);
+    if( use_ambient )
+      oust64_handler(*(PCLFilter<ouster_ros::Point, true>*)filter, msg);
+    else
+      oust64_handler(*(PCLFilter<ouster_ros::Point, false>*)filter, msg);
     break;
 
   case VELO16:
@@ -182,7 +185,13 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   }
 }
 
-void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg)
+void Preprocess::setUseAmbient( bool ambient )
+{
+  use_ambient = ambient;
+}
+
+template<bool _use_ambient>
+void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point, _use_ambient>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   static constexpr double max_ref = std::pow( 2, 16 )-1;
 

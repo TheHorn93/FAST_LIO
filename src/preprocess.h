@@ -57,6 +57,7 @@ class Preprocess
   void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
+  void setUseAmbient( bool ambient );
 
   // sensor_msgs::PointCloud2::ConstPtr pointcloud;
   PointCloudXYZI pl_full, pl_corn, pl_surf;
@@ -71,7 +72,8 @@ class Preprocess
 
   private:
   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
-  void oust64_handler(const PCLFilter<ouster_ros::Point>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg);
+  template<bool _use_ambient>
+  void oust64_handler(const PCLFilter<ouster_ros::Point, _use_ambient>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
   void pub_func(PointCloudXYZI &pl, const ros::Time &ct);
@@ -88,4 +90,5 @@ class Preprocess
   double edgea, edgeb;
   double smallp_intersect, smallp_ratio;
   double vx, vy, vz;
+  bool use_ambient;
 };

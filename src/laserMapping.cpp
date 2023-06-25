@@ -93,6 +93,8 @@ bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, ha
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, store_compensated_ = false;
 std::shared_ptr<std::ofstream> posesFile = nullptr;
 double ref_grad_w = 0.1;
+std::string tum_out_fname;
+bool use_ambient;
 
 vector<vector<int>>  pointSearchInd_surf;
 vector<BoxPointType> cub_needrm;
@@ -137,7 +139,7 @@ state_ikfom state_point;
 vect3 pos_lid;
 
 nav_msgs::Path path;
-nav_msgs::Odometry odomAftMapped;
+nav_msgs::Odometry odomAftMapped, odom_cor_msg;
 geometry_msgs::Quaternion geoQuat;
 geometry_msgs::PoseStamped msg_body_pose;
 
@@ -665,6 +667,24 @@ void set_posestamp(T & out)
 
 }
 
+
+void publish_odometry_correction( const ros::Publisher& pub_odom_cor )
+{
+    odom_cor_msg.header.frame_id = "camera_init";
+    odom_cor_msg.child_frame_id = "body";
+    odom_cor_msg.header.stamp = ros::Time().fromSec(lidar_end_time);
+
+    odom_cor_msg.pose.pose.position.x = 0;
+    odom_cor_msg.pose.pose.position.y = 0;
+    odom_cor_msg.pose.pose.position.z = 0;
+    odom_cor_msg.pose.pose.orientation.x = 0;
+    odom_cor_msg.pose.pose.orientation.y = 0;
+    odom_cor_msg.pose.pose.orientation.z = 0;
+    odom_cor_msg.pose.pose.orientation.w = 1;
+
+    pub_odom_cor.publish(odom_cor_msg);
+}
+
 void publish_odometry(const ros::Publisher & pubOdomAftMapped)
 {
     odomAftMapped.header.frame_id = "camera_init";
@@ -698,13 +718,14 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
     br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
     {
         // write to file:
-        if ( ! posesFile ) posesFile = std::make_shared<std::ofstream>("./fast_lio_after_map_poses.txt");
+        if ( ! posesFile ) posesFile = std::make_shared<std::ofstream>(tum_out_fname);
         if( posesFile && posesFile->is_open() )
         {
              (*posesFile) << (lidar_ts_ns) << " " << transform.getOrigin().x() << " " << transform.getOrigin().y() << " " << transform.getOrigin().z()
                           << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
         }
     }
+
 }
 
 void publish_path(const ros::Publisher pubPath)
@@ -897,11 +918,24 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     solve_time += omp_get_wtime() - solve_start_;
 }
 
+
+std::string generatePathFileName( double ref_grad_w, double filter_size_surf, double filter_size_map, int point_filter_num )
+{
+    std::stringstream sstr;
+    sstr << "w" << ref_grad_w << "_";
+    sstr << "fs" << filter_size_surf << "_";
+    sstr << "fm" << filter_size_map << "_";
+    sstr << "np" << point_filter_num << ".tum";
+    return sstr.str();
+}
+
+
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
     bool dont_compensate = false;
+    nh.param<bool>("filter_use_ambient", use_ambient, false);
     nh.param<bool>("publish/path_en",path_en, true);
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
@@ -926,7 +960,11 @@ int main(int argc, char** argv)
     switch( p_pre->lidar_type )
     {
       case LID_TYPE::OUST64:
-        filter_input = std::make_unique<PCLFilter<ouster_ros::Point>>();
+        p_pre->setUseAmbient( use_ambient );
+        if( use_ambient )
+            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, true>>();
+        else
+            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, false>>();
         break;
       default:
         return -1;
@@ -936,7 +974,7 @@ int main(int argc, char** argv)
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
     nh.param<int>("point_filter/width", filter_input->getParams().width, 1024);
     nh.param<int>("point_filter/height", filter_input->getParams().height, 128);
-    nh.param<int>("point_filter/w_filter_size", filter_input->getParams().w_filter_size, 1);
+    nh.param<int >("point_filter/w_filter_size", filter_input->getParams().w_filter_size, 1);
     nh.param<int>("point_filter/h_filter_size", filter_input->getParams().h_filter_size, 1);
     nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
@@ -952,10 +990,16 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+    std::stringstream sstr;
+    sstr << "/home/jhorn/Documents/Uni/MasterThesis/data/temp_data/";
+    sstr << generatePathFileName( ref_grad_w, filter_size_surf_min, filter_size_map_min, p_pre->point_filter_num );
+    tum_out_fname = sstr.str();
+
     ref_grad_w = std::sqrt( ref_grad_w );
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
     ROS_WARN_STREAM( "runtime_pos_log = " << runtime_pos_log ? "true" : "false" );
-
+    ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
+    ROS_WARN_STREAM( "use_ambient = " << use_ambient );
     if ( store_compensated_ )
     {
         p_pre_raw->blind = p_pre->blind;
@@ -1030,6 +1074,8 @@ int main(int argc, char** argv)
             ("/Laser_map", 100000);
     ros::Publisher pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>
             ("/Odometry", 100000);
+    ros::Publisher pubOdomCorMapped = nh.advertise<nav_msgs::Odometry>
+            ("/odometry_correction", 100000);
     ros::Publisher pubPath          = nh.advertise<nav_msgs::Path>
             ("/path", 100000);
 //------------------------------------------------------------------------------------------------------
@@ -1152,6 +1198,7 @@ int main(int argc, char** argv)
             double t_update_end = omp_get_wtime();
 
             /******* Publish odometry *******/
+            publish_odometry_correction(pubOdomCorMapped);
             publish_odometry(pubOdomAftMapped);
 
             /*** add the feature points to map kdtree ***/

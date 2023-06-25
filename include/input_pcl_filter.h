@@ -24,7 +24,7 @@ private:
   Params m_params;
 };
 
-template<class _PtTp>
+template<class _PtTp, bool _use_ambient>
 class PCLFilter
   : public PCLFilterBase
 {

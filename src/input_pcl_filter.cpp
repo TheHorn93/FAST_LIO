@@ -11,22 +11,38 @@ template<class _Tp, class _ITp>
 static constexpr bool type_is_equal = TypeIsEqual<_Tp, _ITp>::value;
 
 
-template<class _PtTp>
+template<class _PtTp, bool _use_ambient>
 struct PointIntensity
 {};
 
 template<>
-struct PointIntensity<ouster_ros::Point>
+struct PointIntensity<ouster_ros::Point, false>
 {
   using _PtTp = ouster_ros::Point;
 
-  static float get( const typename PCLFilter<_PtTp>::PointCloudTp& pc_in, size_t pt_it )
+  static float get( const typename PCLFilter<_PtTp, false>::PointCloudTp& pc_in, size_t pt_it )
   {
     return pc_in[pt_it].reflectivity;
   }
-  static void set( typename PCLFilter<_PtTp>::PointCloudTp& pc_in, size_t pt_it, float new_val )
+  static void set( typename PCLFilter<_PtTp, false>::PointCloudTp& pc_in, size_t pt_it, float new_val )
   {
     pc_in[pt_it].reflectivity = new_val;
+  }
+
+  static constexpr float max_val = std::pow(2,16)-1;
+};
+template<>
+struct PointIntensity<ouster_ros::Point, true>
+{
+  using _PtTp = ouster_ros::Point;
+
+  static float get( const typename PCLFilter<_PtTp, true>::PointCloudTp& pc_in, size_t pt_it )
+  {
+    return pc_in[pt_it].ambient;
+  }
+  static void set( typename PCLFilter<_PtTp, true>::PointCloudTp& pc_in, size_t pt_it, float new_val )
+  {
+    pc_in[pt_it].ambient = new_val;
   }
 
   static constexpr float max_val = std::pow(2,16)-1;
@@ -34,15 +50,15 @@ struct PointIntensity<ouster_ros::Point>
 
 
 
-template<class _PtTp>
-float getIntensity( const typename PCLFilter<_PtTp>::PointCloudTp& pc_in, size_t pt_it )
+template<class _PtTp, bool _use_ambient>
+float getIntensity( const typename PCLFilter<_PtTp, _use_ambient>::PointCloudTp& pc_in, size_t pt_it )
 {
-  return PointIntensity<_PtTp>::get( pc_in, pt_it );
+  return PointIntensity<_PtTp, _use_ambient>::get( pc_in, pt_it );
 }
-template<class _PtTp>
-void setIntensity( typename PCLFilter<_PtTp>::PointCloudTp& pc_in, size_t pt_it, float new_val )
+template<class _PtTp, bool _use_ambient>
+void setIntensity( typename PCLFilter<_PtTp, _use_ambient>::PointCloudTp& pc_in, size_t pt_it, float new_val )
 {
-  PointIntensity<_PtTp>::set( pc_in, pt_it, new_val );
+  PointIntensity<_PtTp, _use_ambient>::set( pc_in, pt_it, new_val );
 }
 
 
@@ -59,8 +75,8 @@ const PCLFilterBase::Params& PCLFilterBase::getParams() const
 
 
 
-template<class _PtTp>
-bool PCLFilter<_PtTp>::filterOutlierPoint( const PointCloudTp& pc_in, std::vector<float>& new_int, size_t h_it, size_t w_it ) const
+template<class _PtTp, bool _use_ambient>
+bool PCLFilter<_PtTp, _use_ambient>::filterOutlierPoint( const PointCloudTp& pc_in, std::vector<float>& new_int, size_t h_it, size_t w_it ) const
 {
   const int32_t& h_filter_size = getParams().h_filter_size;
   const int32_t& w_filter_size = getParams().w_filter_size;
@@ -139,8 +155,8 @@ bool PCLFilter<_PtTp>::filterOutlierPoint( const PointCloudTp& pc_in, std::vecto
 }
 
 
-template<class _PtTp>
-void PCLFilter<_PtTp>::filterOutlierCloud( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
+template<class _PtTp, bool _use_ambient>
+void PCLFilter<_PtTp, _use_ambient>::filterOutlierCloud( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
   std::vector<size_t> valid_pt_its;
   valid_pt_its.reserve( pc_in.size() );
@@ -185,15 +201,15 @@ void PCLFilter<_PtTp>::filterOutlierCloud( const PointCloudTp& pc_in, std::vecto
 }
 
 
-template<class _PtTp>
-void PCLFilter<_PtTp>::filterOutlier( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
+template<class _PtTp, bool _use_ambient>
+void PCLFilter<_PtTp, _use_ambient>::filterOutlier( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
   int ct_int_rep = 0;
   for( size_t h_it=0 ; h_it < getParams().height ; ++h_it )
   {
     for( size_t w_it=0 ; w_it < getParams().width ; ++w_it )
     {
-      if( isValidPoint( pc_in[h_it *getParams().width +w_it] ) && getIntensity<_PtTp>( pc_in, h_it *getParams().width +w_it ) > 0.0 )
+      if( isValidPoint( pc_in[h_it *getParams().width +w_it] ) && getIntensity<_PtTp, _use_ambient>( pc_in, h_it *getParams().width +w_it ) > 0.0 )
         ct_int_rep += filterOutlierPoint( pc_in, new_int, h_it, w_it );
     }
   }
@@ -201,19 +217,20 @@ void PCLFilter<_PtTp>::filterOutlier( const PointCloudTp& pc_in, std::vector<flo
 }
 
 
-template<class _PtTp>
-void PCLFilter<_PtTp>::normalizeIntensity( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
+template<class _PtTp, bool _use_ambient>
+void PCLFilter<_PtTp, _use_ambient>::normalizeIntensity( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
   new_int.reserve( pc_in.size() );
-  static constexpr float max_val = PointIntensity<_PtTp>::max_val;
+  static constexpr float max_val = PointIntensity<_PtTp, _use_ambient>::max_val;
   for( size_t pt_it=0 ; pt_it < pc_in.size() ; ++pt_it )
   {
-    float cur_int = getIntensity<_PtTp>( pc_in, pt_it );
+    float cur_int = getIntensity<_PtTp, _use_ambient>( pc_in, pt_it );
     //std::cout << cur_int << "->";
     new_int.push_back( static_cast<float>(cur_int) /max_val );
     //std::cout << getIntensity<_PtTp>( pc_in, pt_it ) << ", " << std::endl;
   }
 }
 
-template class PCLFilter<ouster_ros::Point>;
+template class PCLFilter<ouster_ros::Point, false>;
+template class PCLFilter<ouster_ros::Point, true>;
 //template class PCLFilter<velodyne_ros::Point>;
