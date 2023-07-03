@@ -2,6 +2,7 @@
 
 #include "common_lib.h"
 #include "point_type.h"
+#include "lidar_intensity_correction/compensation_models/weighted_range_and_angle.hpp"
 
 namespace reflectance
 {
