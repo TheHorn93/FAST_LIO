@@ -94,7 +94,7 @@ bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, stor
 std::shared_ptr<std::ofstream> posesFile = nullptr;
 double ref_grad_w = 0.1;
 std::string tum_out_fname;
-bool use_ambient;
+int use_channel;
 
 vector<vector<int>>  pointSearchInd_surf;
 vector<BoxPointType> cub_needrm;
@@ -119,6 +119,7 @@ PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
 std::unique_ptr<PCLFilterBase> filter_input;
+std::string comp_type, comp_params;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
@@ -805,6 +806,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
                 normvec->points[i].y = pabcd(1);
                 normvec->points[i].z = pabcd(2);
                 normvec->points[i].intensity = pd2;
+                normvec->points[i].curvature = 
                 res_last[i] = abs(pd2);
             }
         }
@@ -884,36 +886,40 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         /*** Measuremnt: distance to the closest surface/corner ***/
         // Sum of all errors/resiudals
         ekfom_data.h(res_it) = -norm_p.intensity;
+        //std::cout << -norm_p.intensity << " -> " << norm_p.x << ", " << norm_p.y << ", " << norm_p.z << std::endl;
 
         /** Add Intensity gradient to kalman state. */
         //std::cout << "Add intensity grad" << std::endl;
         int pt_it = valid_pts[i];
         PointType &point_world = feats_down_world->points[pt_it];
         PointVector& points_near = Nearest_Points[pt_it];
-
-        // get reflectance gradient to surface
-        Eigen::Vector3d plane_normal( norm_vec );
-        //std::cout << "Got normal=" << norm_vec << std::endl;
-        Eigen::Vector3d ref_grad = reflectance::IrregularGrid::call( point_world, points_near, plane_normal );
-        double grad_length = ref_grad.norm();
-        if( grad_length > 0.0 )
+        if( point_world.reflectance > 0.0 )
         {
-          ref_grad /= grad_length;
-          //std::cout << grad_length << ", ";
+            // get reflectance gradient to surface
+            Eigen::Vector3d plane_normal( norm_vec );
+            //std::cout << "Got normal=" << norm_vec << std::endl;
+            Eigen::Vector3d ref_grad = reflectance::IrregularGrid::call( point_world, points_near, plane_normal );
+            double grad_length = ref_grad.norm();
+            if( grad_length > 0.0 )
+            {
+            ref_grad /= grad_length;
+            //std::cout << grad_length << ", ";
+            }
+
+            // Transform intensity grad: World -> IMU coords
+            //std::cout << "Transform intensity grad" << std::endl;
+            Eigen::Vector3d C_ref(s.rot.conjugate() *ref_grad); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
+            Eigen::Vector3d A_ref(point_crossmat * C_ref *ref_grad_w); // scale laser point skewsymmat by rotated norm vec
+
+            /** Add vector to state. */
+            //std::cout << "Add to state" << std::endl;
+            ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
+                                                    VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            ekfom_data.h(res_it+1) = grad_length *ref_grad_w;
+            //std::cout << grad_length << " -> " << ref_grad << std::endl;
+            //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            //ekfom_data.h(res_it+1) = 0;
         }
-
-        // Transform intensity grad: World -> IMU coords
-        //std::cout << "Transform intensity grad" << std::endl;
-        Eigen::Vector3d C_ref(s.rot.conjugate() *ref_grad); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
-        Eigen::Vector3d A_ref(point_crossmat * C_ref *ref_grad_w); // scale laser point skewsymmat by rotated norm vec
-
-        /** Add vector to state. */
-        //std::cout << "Add to state" << std::endl;
-        ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
-                                                   VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-        ekfom_data.h(res_it+1) = grad_length *ref_grad_w;
-        //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-        //ekfom_data.h(res_it+1) = 0;
     }
     solve_time += omp_get_wtime() - solve_start_;
 }
@@ -935,7 +941,7 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
     bool dont_compensate = false;
-    nh.param<bool>("filter_use_ambient", use_ambient, false);
+    nh.param<int>("filter_use_channel", use_channel, 0);
     nh.param<bool>("publish/path_en",path_en, true);
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
@@ -960,11 +966,17 @@ int main(int argc, char** argv)
     switch( p_pre->lidar_type )
     {
       case LID_TYPE::OUST64:
-        p_pre->setUseAmbient( use_ambient );
-        if( use_ambient )
-            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, true>>();
+        if( use_channel = PCLFILTER_INTENSITY )
+            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_INTENSITY>>();
+        else if( use_channel = PCLFILTER_REFLECTIVITY )
+            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_REFLECTIVITY>>();
+        else if( use_channel = PCLFILTER_AMBIENCE )
+            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_AMBIENCE>>();
         else
-            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, false>>();
+        {
+            ROS_ERROR_STREAM( "Invalid intensity channel: " << use_channel );
+            return -1;
+        }
         break;
       default:
         return -1;
@@ -977,6 +989,8 @@ int main(int argc, char** argv)
     nh.param<int >("point_filter/w_filter_size", filter_input->getParams().w_filter_size, 1);
     nh.param<int>("point_filter/h_filter_size", filter_input->getParams().h_filter_size, 1);
     nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
+    nh.param<std::string>("comp_model", comp_type, "None");
+    nh.param<std::string>("comp_params", comp_params, "None");
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("dont_compensate", dont_compensate, false);
     nh.param<bool>("store_compensated", store_compensated_, false);
@@ -999,7 +1013,7 @@ int main(int argc, char** argv)
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
     ROS_WARN_STREAM( "runtime_pos_log = " << runtime_pos_log ? "true" : "false" );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
-    ROS_WARN_STREAM( "use_ambient = " << use_ambient );
+    ROS_WARN_STREAM( "use_channel = " << use_channel );
     if ( store_compensated_ )
     {
         p_pre_raw->blind = p_pre->blind;

@@ -2,10 +2,10 @@
 
 #include "common_lib.h"
 #include "point_type.h"
-#include "lidar_intensity_correction/compensation_models/weighted_range_and_angle.hpp"
 
 namespace reflectance
 {
+
 
 Eigen::Vector3d projectPtToPlane( const Eigen::Vector3d& pt_pos, const Eigen::Vector3d& plane_anchor, const Eigen::Vector3d& normal )
 {

@@ -102,6 +102,7 @@ Eigen::Vector3d IrregularGrid::getIntensityGradOnPlane( const Eigen::Vector3d& p
 
 Eigen::Vector3d IrregularGrid::call( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal )
 {
+  //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl; 
   Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
   Eigen::Quaterniond rot_quad = getRotationToPlane( normal );
   Eigen::Vector3d pt_pos_rot = transformTo2DPlane( pt, pts_near, normal, rot_quad, pts_near_proj );
@@ -114,7 +115,12 @@ Eigen::Vector3d IrregularGrid::call( const PointType& pt, const PointVector& pts
   Eigen::Matrix<double, 3, 2> mat_grad = getGradientMat( lambda );
   Eigen::Vector3d grad_on_plane = getIntensityGradOnPlane( pt_pos_rot, mat_grad );
 
+  double grad_norm = grad_on_plane.squaredNorm();
+  //std::cout << "grad_n" << grad_norm << " <- " << grad_on_plane.transpose()<< std::endl;
   Eigen::Vector3d grad_out = rot_quad.conjugate() *(grad_on_plane *(-pt.reflectance +int_at_pos));
+  if( grad_norm > 0.0 )
+    grad_out /= grad_norm;
+
   DEBUG_OUT( std::endl << "Grad_in_Plane:" << grad_on_plane *(-pt.reflectance +int_at_pos) << std::endl << "norm=" << grad_on_plane.norm() );
   /*if( grad_out != Eigen::Vector3d(0.0,0.0,0.0) )
   {

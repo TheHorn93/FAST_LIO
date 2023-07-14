@@ -71,10 +71,7 @@ void Preprocess::process(const PCLFilterBase *const filter, const sensor_msgs::P
   switch (lidar_type)
   {
   case OUST64:
-    if( use_ambient )
-      oust64_handler(*(PCLFilter<ouster_ros::Point, true>*)filter, msg);
-    else
-      oust64_handler(*(PCLFilter<ouster_ros::Point, false>*)filter, msg);
+    oust64_handler(*(PCLFilterModelBase<ouster_ros::Point>*)filter, msg);
     break;
 
   case VELO16:
@@ -185,13 +182,8 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   }
 }
 
-void Preprocess::setUseAmbient( bool ambient )
-{
-  use_ambient = ambient;
-}
 
-template<bool _use_ambient>
-void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point, _use_ambient>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg)
+void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   static constexpr double max_ref = std::pow( 2, 16 )-1;
 
@@ -202,9 +194,8 @@ void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point, _use_ambient>
   pcl::PointCloud<ouster_ros::Point> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
 
-  std::vector<float> new_int;
-  input_filter.normalizeIntensity( pl_orig, new_int );
-  input_filter.filterOutlierCloud( pl_orig, new_int );
+  std::vector<float> new_ints;
+  input_filter.applyFilter( pl_orig, new_ints );
   int plsize = pl_orig.size();
   pl_corn.reserve(plsize);
   pl_surf.reserve(plsize);
@@ -226,8 +217,8 @@ void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point, _use_ambient>
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
-      added_pt.intensity = new_int[i];
-      added_pt.reflectance = new_int[i];
+      added_pt.intensity = pl_orig.points[i].intensity;
+      added_pt.reflectance = pl_orig.points[i].intensity;
       //std::cout << "int=" << added_pt.intensity << ", ref=" << added_pt.reflectance << std::endl;
       added_pt.gloss = 0;
       added_pt.normal_x = 0;
@@ -286,8 +277,8 @@ void Preprocess::oust64_handler(const PCLFilter<ouster_ros::Point, _use_ambient>
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       //added_pt.intensity = pl_orig.points[i].intensity /max_ref;
-      added_pt.intensity = new_int[i];
-      added_pt.reflectance = new_int[i];
+      added_pt.intensity = pl_orig.points[i].intensity;
+      added_pt.reflectance = pl_orig.points[i].intensity;
       //std::cout << "    x=" << added_pt.x << ", y=" << added_pt.y << ", z=" << added_pt.z << ", int=" << added_pt.intensity << ", ref=" << added_pt.reflectance << std::endl;
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
