@@ -93,10 +93,19 @@ const PCLFilterBase::Params& PCLFilterBase::getParams() const
 
 void PCLFilterBase::initCompensationModel( const std::string& type, const std::string& param_str )
 {
+  ROS_WARN_STREAM( "Init: Type: " << type <<", Params: " << param_str );
   configuru::Config config = loadConfigFromString( param_str );
   ConfiguruLoader cfg_loader( config );
-  m_model = std::unique_ptr<compensation::CompensationModelBase>( compensation::getModelFromType( type, cfg_loader ) ); 
-  //return nullptr;
+  try
+  {
+    m_model = std::unique_ptr<compensation::CompensationModelBase>( compensation::getModelFromType( type, cfg_loader ) ); 
+  }
+  catch( const std::runtime_error& err )
+  {
+    ROS_ERROR_STREAM( err.what() );
+    throw err;
+  }
+  //return nullptr; 
 }
 
 
@@ -122,14 +131,18 @@ void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& 
 {
   //pc_out = PointCloudTp();
   const PointCloud<double>& pc = pc_in.getPCs()[0];
-  for( size_t pt_it=0; pt_it < pc.numPoints(); ++pt_it )
+  this->m_model->compensateCloud( pc, pc_in.distances(), pc_in.refAngles(), pc.pointPoss().row(0), ints_out );
+  /*for( size_t pt_it=0; pt_it < pc.numPoints(); ++pt_it )
   {
     double intensity = pc.intensity(pt_it);
     double dist_sqrd = pc_in.distances()[pt_it];
-    double angle_cos = std::cos(pc_in.refAngles()[pt_it]);
-    if( (std::abs(pc.data()(4, pt_it)) > 0.0 || std::abs(pc.data()(5, pt_it)) > 0.0 || std::abs(pc.data()(6, pt_it)) > 0.0) && angle_cos < 1.5 && intensity > 0.0 )
+    double angle = pc_in.refAngles()[pt_it];
+    int ring = pc.pointPoss()(0, pt_it);
+    //std::cout << intensity << ", " << dist_sqrd << ", " << angle << ", " << ring <<std::endl;
+    if( (std::abs(pc.data()(4, pt_it)) > 0.0 || std::abs(pc.data()(5, pt_it)) > 0.0 || std::abs(pc.data()(6, pt_it)) > 0.0) && angle < 1.5 && intensity > 0.0 )
     {
-      ints_out[pt_it] = pc.data()(3, pt_it);
+      float new_int = this->m_model->compensatePoint(intensity, dist_sqrd, angle, ring);
+      ints_out[pt_it] = new_int;
       /*_PtTp new_point;
       new_point.x = pc.data()(0, pt_it);
       new_point.y = pc.data()(1, pt_it);
@@ -138,13 +151,13 @@ void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& 
       new_point.ambient = pc.data()(7, pt_it);
       new_point.reflectivity = pc.data()(8, pt_it);
       new_point.ring = pc.pointPoss()(0, pt_it);
-      pc_out.push_back(new_point);*/
+      pc_out.push_back(new_point);
     }
     else
     {
       ints_out[pt_it] = 0.f;
     }
-  }
+  }*/
   //std::cout << pc_out.points.size() << "/" << pc.numPoints() << " inserted" << std::endl;
 }
 

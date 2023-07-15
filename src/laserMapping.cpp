@@ -941,7 +941,6 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
     bool dont_compensate = false;
-    nh.param<int>("filter_use_channel", use_channel, 0);
     nh.param<bool>("publish/path_en",path_en, true);
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
@@ -963,20 +962,34 @@ int main(int argc, char** argv)
     nh.param<double>("mapping/b_acc_cov",b_acc_cov,0.0001);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
+    nh.param<std::string>("comp_model", comp_type, "None");
+    nh.param<std::string>("comp_params", comp_params, "{}");
+    nh.param<int>("filter_use_channel", use_channel, 0);
     switch( p_pre->lidar_type )
     {
       case LID_TYPE::OUST64:
-        if( use_channel = PCLFILTER_INTENSITY )
+        std::cout << "CHANNEL" << use_channel << std::endl;
+        if( use_channel == PCLFILTER_INTENSITY )
+        {
+            ROS_WARN_STREAM( "Using intensity channel" );
             filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_INTENSITY>>();
-        else if( use_channel = PCLFILTER_REFLECTIVITY )
+        }
+        else if( use_channel == PCLFILTER_REFLECTIVITY )
+        {
+            ROS_WARN_STREAM( "Using reflectivity channel" );
             filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_REFLECTIVITY>>();
-        else if( use_channel = PCLFILTER_AMBIENCE )
+        }
+        else if( use_channel == PCLFILTER_AMBIENCE )
+        {
+            ROS_WARN_STREAM( "Using ambience channel" );
             filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_AMBIENCE>>();
+        }
         else
         {
             ROS_ERROR_STREAM( "Invalid intensity channel: " << use_channel );
             return -1;
         }
+        filter_input->initCompensationModel( comp_type, comp_params );
         break;
       default:
         return -1;
@@ -989,8 +1002,6 @@ int main(int argc, char** argv)
     nh.param<int >("point_filter/w_filter_size", filter_input->getParams().w_filter_size, 1);
     nh.param<int>("point_filter/h_filter_size", filter_input->getParams().h_filter_size, 1);
     nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
-    nh.param<std::string>("comp_model", comp_type, "None");
-    nh.param<std::string>("comp_params", comp_params, "None");
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("dont_compensate", dont_compensate, false);
     nh.param<bool>("store_compensated", store_compensated_, false);
