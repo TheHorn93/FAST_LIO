@@ -187,7 +187,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
 {
   static constexpr double max_ref = std::pow( 2, 16 )-1;
 
-  ROS_INFO_STREAM( "Ouster Handler" );
+  //ROS_INFO_STREAM( "Ouster Handler" );
   pl_surf.clear();
   pl_corn.clear();
   pl_full.clear();

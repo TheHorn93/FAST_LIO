@@ -309,14 +309,14 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlier( const PointCloudTp& pc_in, 
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::normalizeIntensity( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
-  new_int.reserve( pc_in.size() );
+  new_int = std::vector<float>( pc_in.size(), 0.0 );
   static constexpr float max_val = PointIntensity<_PtTp, _data_channel>::max_val;
   for( size_t pt_it=0 ; pt_it < pc_in.size() ; ++pt_it )
   {
     float cur_int = getIntensity<_PtTp, _data_channel>( pc_in, pt_it );
     //std::cout << cur_int << "->";
-    new_int.push_back( static_cast<float>(cur_int) /max_val );
-    //std::cout << getIntensity<_PtTp>( pc_in, pt_it ) << ", " << std::endl;
+    new_int[pt_it] = static_cast<float>(cur_int) /max_val;
+    //std::cout << new_int[pt_it] << ", " << std::endl;
   }
 }
 
