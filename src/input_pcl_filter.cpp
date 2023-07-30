@@ -121,7 +121,8 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, st
   Eigen::MatrixXd pose = Eigen::MatrixXd::Zero(7,1);
   pose(3,0) = 1;
   pc_int_cor.poses() = pose;
-  pc_int_cor.callOrdered( 128, 1024 );
+  pc_int_cor.callOrdered( 128, 1024, this->getParams().h_filter_size, this->getParams().w_filter_size );
+  //pc_int_cor.call(21, 15);
   applyModel( pc_int_cor, ints_out );
   //std::cout << "end " << std::endl;
 }

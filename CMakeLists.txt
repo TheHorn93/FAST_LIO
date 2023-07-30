@@ -106,6 +106,12 @@ target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYT
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 target_include_directories(fastlio_mapping PRIVATE INTERFACE )
 
+add_executable(compensate_intensity src/compensate_intensity_node.cpp)
+add_dependencies(compensate_intensity ${${PROJECT_NAME}_EXPORTED_TARGETS})
+target_link_libraries(compensate_intensity ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${CMAKE_PROJECT_NAME}_libs compensation::lidar_intensity_correction_libs compensation::load_files_lib )
+target_include_directories(compensate_intensity PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_include_directories(compensate_intensity PRIVATE INTERFACE )
+
 #add_executable(fastlio_test tests/irregular_grid_test.cpp include/ikd-Tree/ikd-Tree/ikd_Tree.cpp)
 #add_dependencies(fastlio_test ${${PROJECT_NAME}_EXPORTED_TARGETS})
 #target_link_libraries(fastlio_test ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${CMAKE_PROJECT_NAME}_libs)

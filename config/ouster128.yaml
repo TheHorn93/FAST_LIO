@@ -14,7 +14,7 @@ point_filter:
     width: 1024
     height: 128
     w_filter_size: 4
-    h_filter_size: 1
+    h_filter_size: 2
     max_var_mult: 2.0
 
 mapping:

@@ -25,6 +25,8 @@
     <param name="filter_use_channel" type="int" value="$(arg use_channel)"/>
     <param name="comp_model" type="string" value="$(arg model)"/>
     <param name="comp_params" type="string" value="$(arg params)"/>
+    <param name="w_filter_size" type="int" value="4"/>
+    <param name="h_filter_size" type="int" value="4"/>
     <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
     <!-- node pkg="rosbag" type="record" name="record_traj" args="/Odometry -O $(arg out_bag)" / -->
     
