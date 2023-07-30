@@ -21,7 +21,7 @@ ros::Publisher pub_out;
 
 bool ptIsValid( const ouster_ros::Point& pt )
 {
-    return (pt.x > 0.0 && pt.y > 0.0 && pt.z > 0.0);
+    return (std::abs(pt.x) > 0.0 || std::abs(pt.y) > 0.0 || std::abs(pt.z) > 0.0);
 }
 
 void getValidPointsIdxs( const PointCloudType& pc_in, std::vector<uint32_t>& idxs )
@@ -35,6 +35,7 @@ void getValidPointsIdxs( const PointCloudType& pc_in, std::vector<uint32_t>& idx
 
 void transferPoints( const PointCloudType pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
 {
+    size_t valid_ints = 0;
     std::vector<uint32_t> idxs;
     getValidPointsIdxs( pc_in, idxs );
     pc_out.points.reserve( idxs.size() );
@@ -42,12 +43,15 @@ void transferPoints( const PointCloudType pc_in, const std::vector<float>& ints,
     {
         float cur_int = ints[idxs[pt_it]];
         const ouster_ros::Point& cur_pt( pc_in.points[idxs[pt_it]] );
-        std::cout << cur_pt.x << ", " << cur_pt.y << ", " << cur_pt.z << ", " << cur_int << std::endl;
+        //std::cout << cur_pt.x << ", " << cur_pt.y << ", " << cur_pt.z << ", " << cur_int << std::endl;
         pc_out.points.push_back( cur_pt );
         pc_out.points[pt_it].intensity = cur_int;
         pc_out.points[pt_it].reflectivity = cur_int;
-        std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
+        if(cur_int > 0)
+            { ++valid_ints; }
+        //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
+    std::cout << "VALID Ints: " << valid_ints << "/" << pc_out.points.size() << std::endl;
 }
 
 void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
@@ -102,8 +106,8 @@ int main( int argc, char** argv )
     input_filter->initCompensationModel( comp_type, comp_params );
     nh.param<int>("point_filter/width", input_filter->getParams().width, 1024);
     nh.param<int>("point_filter/height", input_filter->getParams().height, 128);
-    nh.param<int >("point_filter/w_filter_size", input_filter->getParams().w_filter_size, 1);
-    nh.param<int>("point_filter/h_filter_size", input_filter->getParams().h_filter_size, 1);
+    nh.param<int >("point_filter/w_filter_size", input_filter->getParams().w_filter_size, 4);
+    nh.param<int>("point_filter/h_filter_size", input_filter->getParams().h_filter_size, 4);
     nh.param<double>("point_filter/max_var_mult", input_filter->getParams().max_var_mult, 1.0);
 
     ROS_WARN_STREAM( "Filter: w=" << input_filter->getParams().w_filter_size << ", h=" << input_filter->getParams().h_filter_size );

@@ -10,8 +10,9 @@
     <arg name="size_map" default="0.5"/>
 
     <arg name="use_channel" default="0"/>
-    <arg name="params" default='{"type": "weighted_da_curve", "w_dist": 1.0827, "w_angle": -0.11015, "w_curve": 2.57714, "per_vign": 0.73795, "num_rings": 128}'/>
-    <arg name="model" default="weighted_da_curve"/>
+    <arg name="params" default='{"type": "weighted_da", "w_dist": 0.905372, "w_angle": -0.215389}'/>
+    <arg name="model" default="weighted_da"/>
+    <!-- arg name="model" default="None"/ -->
 
 	<arg name="data_set" default="nc_math/" />
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
@@ -25,14 +26,14 @@
     <param name="filter_use_channel" type="int" value="$(arg use_channel)"/>
     <param name="comp_model" type="string" value="$(arg model)"/>
     <param name="comp_params" type="string" value="$(arg params)"/>
-    <param name="w_filter_size" type="int" value="4"/>
+    <param name="w_filter_size" type="int" value="5"/>
     <param name="h_filter_size" type="int" value="4"/>
     <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
     <!-- node pkg="rosbag" type="record" name="record_traj" args="/Odometry -O $(arg out_bag)" / -->
     
     <arg name="bag_path" value="$(arg folder)/raw_data.bag"/>
     <!-- arg name="bag_path" value="$(arg data_set)"/ -->
-    <arg name="bag_args" value="--clock --start=5 --delay=3 --rate=0.7"/>
+    <arg name="bag_args" value="--clock --start=5 --delay=3 --rate=0.5"/>
     <node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)" required="true"/>
 
 </launch>

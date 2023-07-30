@@ -1000,7 +1000,7 @@ int main(int argc, char** argv)
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
     nh.param<int>("point_filter/width", filter_input->getParams().width, 1024);
     nh.param<int>("point_filter/height", filter_input->getParams().height, 128);
-    nh.param<int >("w_filter_size", filter_input->getParams().w_filter_size, 8);
+    nh.param<int >("w_filter_size", filter_input->getParams().w_filter_size, 5);
     nh.param<int>("h_filter_size", filter_input->getParams().h_filter_size, 4);
     nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
@@ -1020,7 +1020,7 @@ int main(int argc, char** argv)
     sstr << "/home/jhorn/Documents/Uni/MasterThesis/data/temp_data/";
     sstr << generatePathFileName( ref_grad_w, filter_size_surf_min, filter_size_map_min, p_pre->point_filter_num );
     tum_out_fname = sstr.str();
-    ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
+    //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
     ref_grad_w = std::sqrt( ref_grad_w );
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );

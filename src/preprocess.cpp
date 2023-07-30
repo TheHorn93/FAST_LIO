@@ -262,7 +262,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
     double time_stamp = msg->header.stamp.toSec();
     // cout << "===================================" << endl;
     // printf("Pt size = %d, N_SCANS = %d\r\n", plsize, N_SCANS);
-    size_t num_ref = 0;
+    //size_t num_ref = 0;
     for (int i = 0; i < pl_orig.points.size(); i++)
     {
       if (i % point_filter_num != 0) continue;
@@ -282,7 +282,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
       added_pt.reflectance = pl_orig.points[i].intensity;
       //added_pt.intensity = new_ints[i];
       //added_pt.reflectance = new_ints[i];
-      if( added_pt.intensity > 0.0 ) ++num_ref;
+      //if( added_pt.intensity > 0.0 ) ++num_ref;
       //std::cout << "    x=" << added_pt.x << ", y=" << added_pt.y << ", z=" << added_pt.z << ", int=" << added_pt.intensity << ", ref=" << added_pt.reflectance << std::endl;
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
@@ -291,7 +291,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
 
       pl_surf.points.push_back(added_pt);
     }
-    std::cout << "ValidPoints: " << num_ref << "/" << pl_surf.points.size();
+    //std::cout << "ValidPoints: " << num_ref << "/" << pl_surf.points.size();
   }
   // pub_func(pl_surf, pub_full, msg->header.stamp);
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
