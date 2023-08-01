@@ -295,6 +295,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
   }
   // pub_func(pl_surf, pub_full, msg->header.stamp);
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
+  ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points");
 }
 
 void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
