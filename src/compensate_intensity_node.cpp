@@ -33,9 +33,8 @@ void getValidPointsIdxs( const PointCloudType& pc_in, std::vector<uint32_t>& idx
     }
 }
 
-void transferPoints( const PointCloudType pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
+void transferPoints( const PointCloudType& pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
 {
-    size_t valid_ints = 0;
     std::vector<uint32_t> idxs;
     getValidPointsIdxs( pc_in, idxs );
     pc_out.points.reserve( idxs.size() );
@@ -49,12 +48,10 @@ void transferPoints( const PointCloudType pc_in, const std::vector<float>& ints,
             pc_out.points.push_back( cur_pt );
             pc_out.points[pt_it].intensity = cur_int;
             pc_out.points[pt_it].reflectivity = cur_int;
-            if(cur_int > 0)
-                { ++valid_ints; }
         }
         //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
-    ROS_INFO_STREAM( "VALID Ints: " << valid_ints << "/" << pc_out.points.size() );
+    ROS_INFO_STREAM( "VALID Ints: " << pc_out.points.size() );
 }
 
 void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )

@@ -98,7 +98,8 @@ void PCLFilterBase::initCompensationModel( const std::string& type, const std::s
   ConfiguruLoader cfg_loader( config );
   try
   {
-    m_model = std::unique_ptr<compensation::CompensationModelBase>( compensation::getModelFromType( type, cfg_loader ) ); 
+    compensation::CompensationModelBase* new_model = compensation::getModelFromType( type, cfg_loader );
+    m_model = std::unique_ptr<compensation::CompensationModelBase>( new_model ); 
   }
   catch( const std::runtime_error& err )
   {
@@ -117,13 +118,15 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, st
   normalizeIntensity( pc_in, ints_out );
   filterOutlierCloud( pc_in, ints_out );
   PCIntensityComputation pc_int_cor;
-  pc_int_cor.addPC(pc_in, ints_out);
+  pc_int_cor.addPC(pc_in, ints_out, PcInfoIntensity());
   Eigen::MatrixXd pose = Eigen::MatrixXd::Zero(7,1);
   pose(3,0) = 1;
   pc_int_cor.poses() = pose;
   pc_int_cor.callOrdered( 128, 1024, this->getParams().h_filter_size, this->getParams().w_filter_size );
   //pc_int_cor.call(21, 15);
+  //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
   applyModel( pc_int_cor, ints_out );
+  //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
   //std::cout << "end " << std::endl;
 }
 
