@@ -898,13 +898,14 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             // get reflectance gradient to surface
             Eigen::Vector3d plane_normal( norm_vec );
             //std::cout << "Got normal=" << norm_vec << std::endl;
-            Eigen::Vector3d ref_grad = reflectance::IrregularGrid::call( point_world, points_near, plane_normal );
-            double grad_length = ref_grad.norm();
-            if( grad_length > 0.0 )
+            Eigen::Vector3d ref_grad;
+            double int_error = reflectance::IrregularGrid::call( point_world, points_near, plane_normal, ref_grad );
+            //double grad_length = ref_grad.norm();
+            /*if( grad_length > 0.0 )
             {
-            ref_grad /= grad_length;
+                ref_grad /= grad_length;
             //std::cout << grad_length << ", ";
-            }
+            }*/
 
             // Transform intensity grad: World -> IMU coords
             //std::cout << "Transform intensity grad" << std::endl;
@@ -915,7 +916,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             //std::cout << "Add to state" << std::endl;
             ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
                                                     VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            ekfom_data.h(res_it+1) = grad_length *ref_grad_w;
+            ekfom_data.h(res_it+1) = int_error *ref_grad_w;
             //std::cout << grad_length << " -> " << ref_grad << std::endl;
             //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
             //ekfom_data.h(res_it+1) = 0;

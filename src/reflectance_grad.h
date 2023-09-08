@@ -163,7 +163,7 @@ public:
 
   static Eigen::Vector3d getIntensityGradOnPlane( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double, 3, 2>& grads );
 
-  static Eigen::Vector3d call( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal );
+  static double call( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal, Eigen::Vector3d& grad_out );
 };
 
 }
