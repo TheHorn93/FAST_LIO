@@ -117,7 +117,7 @@ Eigen::Vector3d IrregularGrid::call( const PointType& pt, const PointVector& pts
 
   double grad_norm = grad_on_plane.squaredNorm();
   //std::cout << "grad_n" << grad_norm << " <- " << grad_on_plane.transpose()<< std::endl;
-  Eigen::Vector3d grad_out = rot_quad.conjugate() *(grad_on_plane *(-pt.reflectance +int_at_pos));
+  Eigen::Vector3d grad_out = (rot_quad.conjugate() *grad_on_plane).transpose() * (Eigen::Matrix<double, 3,3>::Identity() - normal * normal.transpose()) *(-pt.reflectance +int_at_pos);
   if( grad_norm > 0.0 )
     grad_out /= grad_norm;
 
