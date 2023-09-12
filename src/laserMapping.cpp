@@ -92,8 +92,9 @@ bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, store_compensated_ = false;
 std::shared_ptr<std::ofstream> posesFile = nullptr;
+std::shared_ptr<std::ofstream> grad_file = nullptr;
 double ref_grad_w = 0.1;
-std::string tum_out_fname;
+std::string tum_out_fname, grad_out_fname;
 int use_channel;
 
 vector<vector<int>>  pointSearchInd_surf;
@@ -900,6 +901,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             //std::cout << "Got normal=" << norm_vec << std::endl;
             Eigen::Vector3d ref_grad;
             double int_error = reflectance::IrregularGrid::call( point_world, points_near, plane_normal, ref_grad );
+            //double grad_weight = ref_grad_w/point_world.reflectance;
             //double grad_length = ref_grad.norm();
             /*if( grad_length > 0.0 )
             {
@@ -922,6 +924,29 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             //ekfom_data.h(res_it+1) = 0;
         }
     }
+
+    double grad_mean = 0.0, grad_var = 0.0;
+    double int_mean = 0.0, int_var = 0.0;
+    size_t res_it = 0;
+    for (int i = 0; i < effct_feat_num; i++)
+    {
+        grad_mean += ekfom_data.h(res_it);
+        int_mean += ekfom_data.h(res_it+1);
+        res_it += 2;
+    }
+    grad_mean /= effct_feat_num;
+    int_mean /= (effct_feat_num*ref_grad_w);
+    res_it = 0;
+    for (int i = 0; i < effct_feat_num; i++)
+    {
+        grad_var += std::pow(grad_mean -ekfom_data.h(res_it), 2);
+        int_var += std::pow(int_mean -ekfom_data.h(res_it+1) /ref_grad_w, 2);
+        res_it += 2;
+    }
+    grad_var /= effct_feat_num;
+    int_var /= effct_feat_num;
+    (*grad_file) << grad_mean << ", " << grad_var << ", " << int_mean << ", " << int_var << "\n";
+
     solve_time += omp_get_wtime() - solve_start_;
 }
 
@@ -1017,10 +1042,14 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
-    std::stringstream sstr;
+    std::stringstream sstr, grad_sstr;
     sstr << "/home/jhorn/Documents/Uni/MasterThesis/data/temp_data/";
+    //sstr << "/home/drz/Documents/eval/fast_lio_out/";
+    grad_sstr << sstr.str() << "gradients.csv";
     sstr << generatePathFileName( ref_grad_w, filter_size_surf_min, filter_size_map_min, p_pre->point_filter_num );
     tum_out_fname = sstr.str();
+    grad_out_fname = grad_sstr.str();
+    grad_file = std::make_shared<std::ofstream>(grad_out_fname);
     //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
     ref_grad_w = std::sqrt( ref_grad_w );

@@ -122,6 +122,7 @@ double IrregularGrid::call( const PointType& pt, const PointVector& pts_near, co
     grad_out /= grad_norm;
 
   DEBUG_OUT( std::endl << "Grad_in_Plane:" << grad_on_plane *(-pt.reflectance +int_at_pos) << std::endl << "norm=" << grad_on_plane.norm() );
+  //std::cout << "    " << int_at_pos << " - " << pt.reflectance << std::endl;
   /*if( grad_out != Eigen::Vector3d(0.0,0.0,0.0) )
   {
     std::cout << std::endl;
