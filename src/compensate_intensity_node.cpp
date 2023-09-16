@@ -33,7 +33,7 @@ void getValidPointsIdxs( const PointCloudType& pc_in, std::vector<uint32_t>& idx
     }
 }
 
-void transferPoints( const PointCloudType& pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
+void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
 {
     std::vector<uint32_t> idxs;
     getValidPointsIdxs( pc_in, idxs );
@@ -43,11 +43,13 @@ void transferPoints( const PointCloudType& pc_in, const std::vector<float>& ints
         float cur_int = ints[idxs[pt_it]];
         if( cur_int > 0.f )
         {
-            const ouster_ros::Point& cur_pt( pc_in.points[idxs[pt_it]] );
-            //std::cout << cur_pt.x << ", " << cur_pt.y << ", " << cur_pt.z << ", " << cur_int << std::endl;
+            ouster_ros::Point& cur_pt( pc_in.points[idxs[pt_it]] );
+            cur_pt.intensity = cur_int;
+            cur_pt.reflectivity = static_cast<uint16_t>(cur_int*65535);
             pc_out.points.push_back( cur_pt );
-            pc_out.points[pt_it].intensity = cur_int;
-            pc_out.points[pt_it].reflectivity = cur_int;
+            //pc_out.points[pt_it].intensity = cur_int;
+            //pc_out.points[pt_it].reflectivity = static_cast<uint16_t>(cur_int*65535);
+            //std::cout << pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << ", " << pc_out.points[pt_it].reflectivity << std::endl;
         }
         //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
@@ -63,10 +65,20 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     input_filter->applyFilter( pc_in, new_ints );
     PointCloudType pc_out;
     transferPoints( pc_in, new_ints, pc_out );
+    //for( size_t pt_it=0; pt_it < pc_out.size(); ++pt_it )
+    //{
+    //    if(pt_it%1000 == 0)
+    //        std::cout << pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << ", " << pc_out.points[pt_it].reflectivity << std::endl;
+    //}
 
     sensor_msgs::PointCloud2 msg_out;
     pcl::toROSMsg( pc_out, msg_out );
     msg_out.header = msg->header;
+    //for( size_t pt_it=0; pt_it < pc_out.size(); ++pt_it )
+    //{
+    //    if(pt_it%1000 == 0)
+    //        std::cout << pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << ", " << pc_out.points[pt_it].reflectivity << std::endl;
+    //}
     pub_out.publish( msg_out );
 }
 

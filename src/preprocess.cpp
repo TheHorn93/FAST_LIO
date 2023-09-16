@@ -283,7 +283,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
       //added_pt.intensity = new_ints[i];
       //added_pt.reflectance = new_ints[i];
       //if( added_pt.intensity > 0.0 ) ++num_ref;
-      //std::cout << "    x=" << added_pt.x << ", y=" << added_pt.y << ", z=" << added_pt.z << ", int=" << added_pt.intensity << ", ref=" << added_pt.reflectance << std::endl;
+      //std::cout << "    x=" << added_pt.x << ", y=" << added_pt.y << ", z=" << added_pt.z << ", int=" << added_pt.intensity << ", from=" << pl_orig.points[i].intensity << std::endl;
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
       added_pt.normal_z = 0;
