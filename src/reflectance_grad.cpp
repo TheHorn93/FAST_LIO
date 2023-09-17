@@ -117,8 +117,8 @@ double IrregularGrid::call( const PointType& pt, const PointVector& pts_near, co
 
   //double grad_norm = grad_on_plane.norm();
   //std::cout << "grad_n" << grad_norm << " <- " << grad_on_plane.transpose()<< std::endl;
-  grad_out = (rot_quad.conjugate() *grad_on_plane).transpose(); //* (Eigen::Matrix<double, 3,3>::Identity() - normal * normal.transpose());
-  double grad_norm = grad_out.squaredNorm();
+  grad_out = (rot_quad.conjugate() *grad_on_plane).transpose()* (Eigen::Matrix<double, 3,3>::Identity() - normal * normal.transpose());
+  double grad_norm = grad_out.norm();
   if( grad_norm > 0.0 )
     grad_out /= grad_norm;
 

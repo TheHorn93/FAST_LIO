@@ -214,6 +214,7 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     po->x = p_global(0);
     po->y = p_global(1);
     po->z = p_global(2);
+    //std::cout << pi->intensity << ", ";
     po->intensity = pi->intensity;
 }
 
@@ -919,6 +920,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
                                                     VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
             ekfom_data.h(res_it+1) = int_error *ref_grad_w;
+            //std::cout << ref_grad.norm() *ref_grad_w << " -> " << int_error *ref_grad_w <<std::endl;
             //std::cout << grad_length << " -> " << ref_grad << std::endl;
             //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
             //ekfom_data.h(res_it+1) = 0;
@@ -930,8 +932,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     size_t res_it = 0;
     for (int i = 0; i < effct_feat_num; i++)
     {
-        grad_mean += ekfom_data.h(res_it);
-        int_mean += ekfom_data.h(res_it+1);
+        grad_mean += ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm();
+        int_mean += ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm();
         res_it += 2;
     }
     grad_mean /= effct_feat_num;
@@ -939,8 +941,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     res_it = 0;
     for (int i = 0; i < effct_feat_num; i++)
     {
-        grad_var += std::pow(grad_mean -ekfom_data.h(res_it), 2);
-        int_var += std::pow(int_mean -ekfom_data.h(res_it+1) /ref_grad_w, 2);
+        grad_var += std::pow(grad_mean -ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm(), 2);
+        int_var += std::pow(int_mean -ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm(), 2);
         res_it += 2;
     }
     grad_var /= effct_feat_num;

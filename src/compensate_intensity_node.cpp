@@ -77,7 +77,7 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     //for( size_t pt_it=0; pt_it < pc_out.size(); ++pt_it )
     //{
     //    if(pt_it%1000 == 0)
-    //        std::cout << pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << ", " << pc_out.points[pt_it].reflectivity << std::endl;
+    //        std::cout <<  pc_out.points[pt_it].intensity << ", ";
     //}
     pub_out.publish( msg_out );
 }
