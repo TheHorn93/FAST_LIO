@@ -43,9 +43,9 @@
 #include <so3_math.h>
 #include <ros/ros.h>
 #include <Eigen/Core>
-#include "IMU_Processing.hpp"
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
+#include "IMU_Processing.hpp"
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
@@ -53,9 +53,10 @@
 #include <geometry_msgs/Vector3.h>
 #include <livox_ros_driver/CustomMsg.h>
 #include "preprocess.h"
+#include "input_pcl_filter.h"
 #include <ikd-Tree/ikd-Tree/ikd_Tree.h>
 #include "reflectance_grad.h"
-#include "input_pcl_filter.h"
+//#define COMP_ONLY
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -92,9 +93,10 @@ bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, store_compensated_ = false;
 std::shared_ptr<std::ofstream> posesFile = nullptr;
+std::shared_ptr<std::ofstream> pcdPosesFile = nullptr;
 std::shared_ptr<std::ofstream> grad_file = nullptr;
 double ref_grad_w = 0.1;
-std::string tum_out_fname, grad_out_fname;
+std::string tum_out_fname, tum_comp_fname, grad_out_fname;
 int use_channel;
 
 vector<vector<int>>  pointSearchInd_surf;
@@ -105,10 +107,10 @@ vector<double>       extrinR(9, 0.0);
 deque<int64_t>                    time_buffer_ns;
 deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
-deque<PointCloudXYZI::Ptr>        lidar_buffer_raw;
+deque<PointCloudOuster::Ptr>      lidar_buffer_raw;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
-PointCloudXYZI::Ptr meas_lidar_raw = nullptr;
-PointCloudXYZI::Ptr meas_lidar_comp = nullptr;
+PointCloudOuster::Ptr meas_lidar_raw = nullptr;
+PointCloudOuster::Ptr meas_lidar_comp = nullptr;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -119,7 +121,7 @@ PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
-std::unique_ptr<PCLFilterBase> filter_input;
+//std::unique_ptr<PCLFilterBase> filter_input;
 std::string comp_type, comp_params;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -181,6 +183,7 @@ void pointBodyToWorld_ikfom(PointType const * const pi, PointType * const po, st
     po->y = p_global(1);
     po->z = p_global(2);
     po->intensity = pi->intensity;
+    po->reflectance = pi->reflectance;
 }
 
 
@@ -193,6 +196,7 @@ void pointBodyToWorld(PointType const * const pi, PointType * const po)
     po->y = p_global(1);
     po->z = p_global(2);
     po->intensity = pi->intensity;
+    po->reflectance = pi->reflectance;
 }
 
 template<typename T>
@@ -206,6 +210,7 @@ void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
     po[2] = p_global(2);
 }
 
+template <typename PointType>
 void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 {
     V3D p_body(pi->x, pi->y, pi->z);
@@ -216,6 +221,7 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     po->z = p_global(2);
     //std::cout << pi->intensity << ", ";
     po->intensity = pi->intensity;
+    po->reflectance = pi->reflectance;
 }
 
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
@@ -227,6 +233,7 @@ void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
     po->y = p_body_imu(1);
     po->z = p_body_imu(2);
     po->intensity = pi->intensity;
+    po->reflectance = pi->reflectance;
 }
 
 void points_cache_collect()
@@ -301,12 +308,14 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process(filter_input.get(), msg, ptr);
+    p_pre->process<PointCloudXYZI>(nullptr,//filter_input.get(),
+                   msg, ptr);
     lidar_buffer.push_back(ptr);
     if ( store_compensated_ && p_pre_raw )
     {
-        PointCloudXYZI::Ptr ptr_raw(new PointCloudXYZI());
-        p_pre_raw->process(filter_input.get(), msg, ptr_raw);
+        PointCloudOuster::Ptr ptr_raw(new PointCloudOuster());
+        p_pre_raw->process<PointCloudOuster>(nullptr,//filter_input.get(),
+                           msg, ptr_raw);
         lidar_buffer_raw.push_back(ptr_raw);
     }
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
@@ -525,7 +534,8 @@ void map_incremental()
     add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
-
+#include <rosbag/bag.h>
+bool dist_passed = false;
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
 PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
 void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
@@ -553,8 +563,8 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     }
 
     /**************** save map ****************/
-    /* 1. make sure you have enough memories
-    /* 2. noted that pcd save will influence the real-time performences **/
+    /* 1. make sure you have enough memories  */
+    /* 2. noted that pcd save will influence the real-time performences */
     if (pcd_save_en)
     {
         int size = feats_undistort->points.size();
@@ -584,31 +594,83 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         }
     }
 
-    if ( store_compensated_ && meas_lidar_comp )
+    if ( dist_passed && store_compensated_ && meas_lidar_comp )
     {
         static int scan_wait_num = 0;
         static uint64_t prev_pcd_end_time = first_lidar_time * 1e9;
         scan_wait_num ++;
 
         constexpr bool use_full = true;
-        PointCloudXYZI::Ptr cloud ( use_full ? meas_lidar_comp : feats_undistort );
+        PointCloudOuster::Ptr cloud = meas_lidar_comp; //( use_full ? meas_lidar_comp : feats_undistort );
 
         const int size = cloud->points.size();
-        if ( scan_wait_num >= pcd_save_interval && size > 0 )
+        if ( //scan_wait_num >= pcd_save_interval &&
+             size > 0 )
         {
-            PointCloudXYZI::Ptr laserCloudWorld( new PointCloudXYZI(size, 1));
-
-            for (int i = 0; i < size; ++i)
+            PointCloudOuster::Ptr laserCloudWorld;
+            constexpr bool toWorld = false;
+            if constexpr ( toWorld )
             {
-                RGBpointBodyToWorld( &cloud->points[i], &laserCloudWorld->points[i]);
+                laserCloudWorld = PointCloudOuster::Ptr( new PointCloudOuster(size, 1));
+                for (int i = 0; i < size; ++i)
+                {
+                    RGBpointBodyToWorld( &cloud->points[i], &laserCloudWorld->points[i]);
+                }
+            }
+            else
+            {
+                laserCloudWorld = cloud;
+
+//                for ( int i = 0; i < size; i+=100 )
+//                    std::cout << "A["<<i<<"]: " << laserCloudWorld->points[i].x << " "
+//                              << laserCloudWorld->points[i].y << " "
+//                              << laserCloudWorld->points[i].z << " "
+//                              << laserCloudWorld->points[i].intensity << " "
+//                              << laserCloudWorld->points[i].t << " "
+//                              << int(laserCloudWorld->points[i].reflectivity) << " "
+//                              << int(laserCloudWorld->points[i].ring) << " "
+//                              << int(laserCloudWorld->points[i].ambient) << " "
+//                              << int(laserCloudWorld->points[i].range) << " "<< std::endl;
             }
 
-            const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/") + to_string(prev_pcd_end_time) + string(".pcd"));
-            pcl::PCDWriter pcd_writer;
-            cout << "current scan saved to /PCD_COMP/" << all_points_dir << endl;
-            pcd_writer.writeBinary(all_points_dir, *laserCloudWorld);
+            //for ( int i = 0; i < size; ++i)
+            //    laserCloudWorld->points[i].intensity *= 65535; // Stupid HACK, due to scaling before hand...
+
+            constexpr bool store_to_bag = true;
+            if constexpr ( store_to_bag )
+            {
+                const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/stored.bag"));
+                static std::shared_ptr<rosbag::Bag> bagFile = nullptr;
+                if ( ! bagFile )
+                    bagFile = std::make_shared<rosbag::Bag>( all_points_dir, rosbag::bagmode::Write );
+
+                sensor_msgs::PointCloud2 laserCloudmsg;
+                pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
+                laserCloudmsg.header.stamp = ros::Time().fromNSec(lidar_ts_ns);
+                laserCloudmsg.header.frame_id = "camera_init";
+                bagFile->write("/os_cloud/comp", laserCloudmsg.header.stamp,laserCloudmsg);
+                cout << "current scan saved to PCD_COMP: " << all_points_dir << " " << to_string(prev_pcd_end_time) << endl;
+            }
+            else
+            {
+                const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/") + to_string(prev_pcd_end_time) + string(".pcd"));
+                pcl::PCDWriter pcd_writer;
+                cout << "current scan saved to PCD_COMP: " << all_points_dir << " "<< endl;
+                pcd_writer.writeBinary(all_points_dir, *laserCloudWorld);
+            }
             scan_wait_num = 0;
             prev_pcd_end_time = lidar_end_time * 1e9;
+
+            if ( ! pcdPosesFile ) pcdPosesFile = std::make_shared<std::ofstream>(tum_comp_fname);
+            if( pcdPosesFile && pcdPosesFile->is_open() )
+            {
+                const Eigen::Quaterniond q((state_point.rot * state_point.offset_R_L_I).coeffs());
+                if constexpr ( toWorld )
+                    (*pcdPosesFile) << (lidar_ts_ns) << " 0 0 0 0 0 0 1"<< std::endl;
+                else
+                    (*pcdPosesFile) << (lidar_ts_ns) << " " << pos_lid(0) << " " << pos_lid(1) << " " << pos_lid(2)
+                                    << " " << (q.x()) << " " << (q.y()) << " " << (q.z()) << " " << q.w() << std::endl;
+            }
         }
     }
 }
@@ -787,7 +849,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             // This list should be sorted -> ikd-Tree MANUAL_HEAP.FloatUp() on insert should do so...?
             ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis); // Find nearest surface -> find nearest surface and identit
             // If at least 5 points can be found current: point can be used further.
-            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false : true;
+            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : (pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false : true);
         }
 
         if (!point_selected_surf[i]) continue;
@@ -975,8 +1037,7 @@ int main(int argc, char** argv)
     nh.param<bool>("publish/scan_bodyframe_pub_en",scan_body_pub_en, true);
     nh.param<int>("max_iteration",NUM_MAX_ITERATIONS,4);
     nh.param<string>("map_file_path",map_file_path,"");
-    //nh.param<string>("common/lid_topic",lid_topic,"/livox/lidar");
-    lid_topic = "/cloud_compensated";
+    nh.param<string>("common/comp_lid_topic",lid_topic,"/cloud_compensated");
     nh.param<string>("common/imu_topic", imu_topic,"/livox/imu");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
     nh.param<double>("filter_size_corner",filter_size_corner_min,0.5);
@@ -991,46 +1052,46 @@ int main(int argc, char** argv)
     nh.param<double>("mapping/b_acc_cov",b_acc_cov,0.0001);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
-    nh.param<std::string>("comp_model", comp_type, "None");
-    nh.param<std::string>("comp_params", comp_params, "{}");
+//    nh.param<std::string>("comp_model", comp_type, "None");
+//    nh.param<std::string>("comp_params", comp_params, "{}");
     nh.param<int>("filter_use_channel", use_channel, 0);
-    switch( p_pre->lidar_type )
-    {
-      case LID_TYPE::OUST64:
-        std::cout << "CHANNEL" << use_channel << std::endl;
-        if( use_channel == PCLFILTER_INTENSITY )
-        {
-            ROS_WARN_STREAM( "Using intensity channel" );
-            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_INTENSITY>>();
-        }
-        else if( use_channel == PCLFILTER_REFLECTIVITY )
-        {
-            ROS_WARN_STREAM( "Using reflectivity channel" );
-            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_REFLECTIVITY>>();
-        }
-        else if( use_channel == PCLFILTER_AMBIENCE )
-        {
-            ROS_WARN_STREAM( "Using ambience channel" );
-            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_AMBIENCE>>();
-        }
-        else
-        {
-            ROS_ERROR_STREAM( "Invalid intensity channel: " << use_channel );
-            return -1;
-        }
-        filter_input->initCompensationModel( comp_type, comp_params );
-        break;
-      default:
-        return -1;
-    }
+//    switch( p_pre->lidar_type )
+//    {
+//      case LID_TYPE::OUST64:
+//        std::cout << "CHANNEL" << use_channel << std::endl;
+//        if( use_channel == PCLFILTER_INTENSITY )
+//        {
+//            ROS_WARN_STREAM( "Using intensity channel" );
+//            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_INTENSITY>>();
+//        }
+//        else if( use_channel == PCLFILTER_REFLECTIVITY )
+//        {
+//            ROS_WARN_STREAM( "Using reflectivity channel" );
+//            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_REFLECTIVITY>>();
+//        }
+//        else if( use_channel == PCLFILTER_AMBIENCE )
+//        {
+//            ROS_WARN_STREAM( "Using ambience channel" );
+//            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_AMBIENCE>>();
+//        }
+//        else
+//        {
+//            ROS_ERROR_STREAM( "Invalid intensity channel: " << use_channel );
+//            return -1;
+//        }
+//        filter_input->initCompensationModel( comp_type, comp_params );
+//        break;
+//      default:
+//        return -1;
+//    }
     nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
     nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, US);
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
-    nh.param<int>("point_filter/width", filter_input->getParams().width, 1024);
-    nh.param<int>("point_filter/height", filter_input->getParams().height, 128);
-    nh.param<int >("w_filter_size", filter_input->getParams().w_filter_size, 5);
-    nh.param<int>("h_filter_size", filter_input->getParams().h_filter_size, 4);
-    nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
+//    nh.param<int>("point_filter/width", filter_input->getParams().width, 1024);
+//    nh.param<int>("point_filter/height", filter_input->getParams().height, 128);
+//    nh.param<int >("w_filter_size", filter_input->getParams().w_filter_size, 5);
+//    nh.param<int>("h_filter_size", filter_input->getParams().h_filter_size, 4);
+//    nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("dont_compensate", dont_compensate, false);
     nh.param<bool>("store_compensated", store_compensated_, false);
@@ -1050,13 +1111,15 @@ int main(int argc, char** argv)
     grad_sstr << sstr.str() << "gradients.csv";
     sstr << generatePathFileName( ref_grad_w, filter_size_surf_min, filter_size_map_min, p_pre->point_filter_num );
     tum_out_fname = sstr.str();
+    sstr <<"_pcd.txt";
+    tum_comp_fname = sstr.str();
     grad_out_fname = grad_sstr.str();
     grad_file = std::make_shared<std::ofstream>(grad_out_fname);
     //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
     ref_grad_w = std::sqrt( ref_grad_w );
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
-    ROS_WARN_STREAM( "runtime_pos_log = " << runtime_pos_log ? "true" : "false" );
+    ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
     ROS_WARN_STREAM( "use_channel = " << use_channel );
     if ( store_compensated_ )
@@ -1068,6 +1131,29 @@ int main(int argc, char** argv)
         p_pre_raw->SCAN_RATE = p_pre->SCAN_RATE;
         p_pre_raw->point_filter_num = 1;
         p_pre_raw->feature_enabled = false;
+
+        {
+            float time_unit_scale = 1.f;
+            switch (p_pre_raw->time_unit)
+            {
+              case SEC:
+                time_unit_scale = 1.e3f;
+                break;
+              case MS:
+                time_unit_scale = 1.f;
+                break;
+              case US:
+                time_unit_scale = 1.e-3f;
+                break;
+              case NS:
+                time_unit_scale = 1.e-6f;
+                break;
+              default:
+                time_unit_scale = 1.f;
+                break;
+            }
+            p_imu->time_unit_scale = time_unit_scale;
+        }
     }
 
     path.header.stamp    = ros::Time::now();
@@ -1178,9 +1264,9 @@ int main(int argc, char** argv)
 
             if ( store_compensated_ && meas_lidar_raw )
             {
-                meas_lidar_comp = PointCloudXYZI::Ptr(new PointCloudXYZI());
+                meas_lidar_comp = PointCloudOuster::Ptr(new PointCloudOuster());
                 //(*meas_lidar_comp) = *meas_lidar_raw;
-                p_imu->UndistortRawPcl( meas_lidar_raw, kf, meas_lidar_comp );
+                p_imu->UndistortRawPcl<PointCloudOuster>( meas_lidar_raw, kf, meas_lidar_comp );
             }
 
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
@@ -1227,7 +1313,7 @@ int main(int argc, char** argv)
             fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
             <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            if(0) // If you need to see map point, change to "if(1)"
+            //if(0) // If you need to see map point, change to "if(1)"
             {
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
@@ -1256,6 +1342,16 @@ int main(int argc, char** argv)
 
             double t_update_end = omp_get_wtime();
 
+            static Eigen::Vector3d last_pos = Eigen::Vector3d(state_point.pos[0]-2.,state_point.pos[1]-2.,state_point.pos[2]-2.); // take first one too
+            if ( store_compensated_ )
+            {
+                dist_passed = (last_pos - state_point.pos).norm() > 1;
+                if ( dist_passed )
+                {
+                    //std::cout << "dist: " << dist_passed << " cur: " << state_point.pos(0) << " " << state_point.pos(1) << " " << state_point.pos(2) << " last: " << last_pos.transpose() << std::endl;
+                    last_pos = state_point.pos;
+                }
+            }
             /******* Publish odometry *******/
             publish_odometry_correction(pubOdomCorMapped);
             publish_odometry(pubOdomAftMapped);
@@ -1268,10 +1364,10 @@ int main(int argc, char** argv)
             /******* Publish points *******/
             //std::cout << "publish?: " << ( scan_pub_en || pcd_save_en || store_compensated_ ) << std::endl;
             if (path_en)                         publish_path(pubPath);
-            if (scan_pub_en || pcd_save_en || store_compensated_ )  publish_frame_world(pubLaserCloudFull);
+            if (scan_pub_en || pcd_save_en || (store_compensated_ && dist_passed) )  publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             // publish_effect_world(pubLaserCloudEffect);
-            // publish_map(pubLaserCloudMap);
+             publish_map(pubLaserCloudMap);
 
             /*** Debug variables ***/
             if (runtime_pos_log)
@@ -1309,7 +1405,7 @@ int main(int argc, char** argv)
     }
 
     /**************** save map ****************/
-    /* 1. make sure you have enough memories
+    /* 1. make sure you have enough memories  */
     /* 2. pcd save will largely influence the real-time performences **/
     if (pcl_wait_save->size() > 0 && pcd_save_en)
     {

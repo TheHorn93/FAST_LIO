@@ -52,6 +52,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
+  rosbag_storage
   livox_ros_driver
   message_generation
   eigen_conversions

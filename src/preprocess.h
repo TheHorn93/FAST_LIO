@@ -6,6 +6,7 @@ using namespace std;
 
 //typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
+typedef pcl::PointCloud<ouster_ros::Point> PointCloudOuster;
 
 enum LID_TYPE{AVIA = 1, VELO16, OUST64}; //{1, 2, 3}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
@@ -55,11 +56,13 @@ class Preprocess
   ~Preprocess();
 
   void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
-  void process(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  template <typename Cloud>
+  void process(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, typename Cloud::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
   void setUseAmbient( bool ambient );
 
   // sensor_msgs::PointCloud2::ConstPtr pointcloud;
+  PointCloudOuster pl_raw;
   PointCloudXYZI pl_full, pl_corn, pl_surf;
   PointCloudXYZI pl_buff[128]; //maximum 128 line lidar
   vector<orgtype> typess[128]; //maximum 128 line lidar

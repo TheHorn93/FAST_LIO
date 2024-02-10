@@ -6,17 +6,26 @@
 
     <rosparam command="load" file="$(find fast_lio)/config/ouster128.yaml" />
 
+    <arg name="num_filter_points"/>
+    <arg name="size_surf"/>
+    <arg name="size_map"/>
+
     <param name="dont_compensate" type="bool" value="false"/>
+    <param name="store_compensated" type="bool" value="false"/>
     <param name="has_lidar_end_time" type="bool" value="false"/>
     <param name="feature_extract_enable" type="bool" value="false"/>
-    <param name="point_filter_num" type="int" value="2"/>
+
     <param name="max_iteration" type="int" value="3" />
-    <param name="filter_size_surf" type="double" value="0.25" />
-    <param name="filter_size_map" type="double" value="0.25" />
-    <param name="cube_side_length" type="double" value="500" />
+    <param name="cube_side_length" type="double" value="1000" />
     <param name="runtime_pos_log_enable" type="bool" value="false" />
+
+    <node pkg="tf" type="static_transform_publisher" name="baselink_os_broadcaster" args="0 0 0 -1 1 0 0 camera_init map 100" />
+    <node pkg="tf" type="static_transform_publisher" name="baselink_gps_broadcaster" args="0 0 0 0 0 0 1 body os_lidar 100" />
+
+    <node  pkg="fast_lio" type="compensate_intensity" name="compensate_intensity" output="screen"/>
+    <node  pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" required="true"/>
+
     <!-- node launch-prefix="gdb -ex run" pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" / --> 
-    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" /> 
 
     <group if="$(arg rviz)">
 		<node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />

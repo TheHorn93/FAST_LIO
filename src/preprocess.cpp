@@ -47,7 +47,8 @@ void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, Point
   *pcl_out = pl_surf;
 }
 
-void Preprocess::process(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+template <typename Cloud>
+void Preprocess::process(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, typename Cloud::Ptr &pcl_out)
 {
   switch (time_unit)
   {
@@ -82,8 +83,14 @@ void Preprocess::process(const PCLFilterBase *const filter, const sensor_msgs::P
     printf("Error LiDAR Type");
     break;
   }
-  *pcl_out = pl_surf;
+  if constexpr ( std::is_same_v<Cloud,PointCloudOuster> )
+    *pcl_out = pl_raw;
+  else
+    *pcl_out = pl_surf;
 }
+
+template void Preprocess::process<PointCloudOuster>(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudOuster::Ptr &pcl_out);
+template void Preprocess::process<PointCloudXYZI>(const PCLFilterBase *const filter, const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudXYZI::Ptr &pcl_out);
 
 void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
 {
@@ -185,14 +192,21 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
 
 void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& input_filter, const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-  static constexpr double max_ref = std::pow( 2, 16 )-1;
+  static const double max_ref = std::pow( 2, 16 )-1;
 
   //ROS_INFO_STREAM( "Ouster Handler" );
+  pl_raw.clear();
   pl_surf.clear();
   pl_corn.clear();
   pl_full.clear();
   pcl::PointCloud<ouster_ros::Point> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
+
+//  float maxVal = 0, oMaxVal = 0;
+//  for (int i = 0; i < pl_orig.points.size(); i++)
+//    if ( maxVal < pl_orig.points[i].intensity ) maxVal = pl_orig.points[i].intensity;
+
+  pl_raw = pl_orig;
 
   //std::vector<float> new_ints;
   //input_filter.applyFilter( pl_orig, new_ints );
@@ -279,7 +293,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
       added_pt.z = pl_orig.points[i].z;
       //added_pt.intensity = pl_orig.points[i].intensity /max_ref;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.reflectance = pl_orig.points[i].intensity;
+      added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
       //added_pt.intensity = new_ints[i];
       //added_pt.reflectance = new_ints[i];
       //if( added_pt.intensity > 0.0 ) ++num_ref;
@@ -290,13 +304,16 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
       added_pt.normal_z = 0;
       added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
 
+      //if ( oMaxVal < added_pt.intensity ) oMaxVal = added_pt.intensity;
       pl_surf.points.push_back(added_pt);
     }
     //std::cout << "ValidPoints: " << num_ref << "/" << pl_surf.points.size();
   }
+
+
   // pub_func(pl_surf, pub_full, msg->header.stamp);
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
-  ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points");
+  //ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points. max: " << maxVal << " " << oMaxVal);
 }
 
 void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)

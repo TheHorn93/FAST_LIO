@@ -1,6 +1,11 @@
-#include "input_pcl_filter.h"
-#include "lidar_intensity_correction/load_files.h"
+#define LOGURU_IMPLEMENTATION 1
+#include <loguru.hpp>
+#define CONFIGURU_IMPLEMENTATION 1
+#include <configuru.hpp>
 
+#include "input_pcl_filter.h"
+//#include "lidar_intensity_correction/load_files.h"
+#include "load_files.h"
 
 template<class _Tp, class _ITp>
 struct TypeIsEqual
@@ -30,7 +35,7 @@ struct PointIntensity<ouster_ros::Point, PclFilterChannel::PCLFILTER_INTENSITY>
     pc_in[pt_it].intensity = new_val;
   }
 
-  static constexpr float max_val = std::pow(2,16)-1;
+  static constexpr float max_val = float((1<<16)-1);//std::pow(2,16)-1;
 };
 template<>
 struct PointIntensity<ouster_ros::Point, PclFilterChannel::PCLFILTER_REFLECTIVITY>
@@ -46,7 +51,7 @@ struct PointIntensity<ouster_ros::Point, PclFilterChannel::PCLFILTER_REFLECTIVIT
     pc_in[pt_it].reflectivity = new_val;
   }
 
-  static constexpr float max_val = std::pow(2,16)-1;
+  static constexpr float max_val = float((1<<16)-1);//std::pow(2,16)-1;
 };
 template<>
 struct PointIntensity<ouster_ros::Point, PclFilterChannel::PCLFILTER_AMBIENCE>
@@ -62,7 +67,7 @@ struct PointIntensity<ouster_ros::Point, PclFilterChannel::PCLFILTER_AMBIENCE>
     pc_in[pt_it].ambient = new_val;
   }
 
-  static constexpr float max_val = std::pow(2,16)-1;
+  static constexpr float max_val = float((1<<16)-1); //std::pow(2,16)-1;
 };
 
 
@@ -112,29 +117,43 @@ void PCLFilterBase::initCompensationModel( const std::string& type, const std::s
 
 
 template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, std::vector<float>& ints_out ) const
+void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, std::vector<float>& ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals ) const
 {
+  constexpr bool print_info = false;
+
   //std::cout << "Start ";
   normalizeIntensity( pc_in, ints_out );
   filterOutlierCloud( pc_in, ints_out );
   PCIntensityComputation pc_int_cor;
+  [[maybe_unused]] std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
   pc_int_cor.addPC(pc_in, ints_out, PcInfoIntensity());
+  [[maybe_unused]] const double t1 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+
   Eigen::MatrixXd pose = Eigen::MatrixXd::Zero(7,1);
   pose(3,0) = 1;
   pc_int_cor.poses() = pose;
   pc_int_cor.callOrdered( 128, 1024, this->getParams().h_filter_size, this->getParams().w_filter_size );
+  [[maybe_unused]] const double t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
   //pc_int_cor.call(21, 15);
   //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
   applyModel( pc_int_cor, ints_out );
+  [[maybe_unused]] const double t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+
+  if ( normals != nullptr )
+  {
+    *normals = pc_int_cor.getPCs()[0].getNormals().template cast<float>();
+  }
+
   //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
   //std::cout << "end " << std::endl;
+  if constexpr ( print_info ) ROS_INFO_STREAM("times... " << t1 << " n: " << (t2-t1) << " cor: " << (t3-t2) );
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& pc_in, std::vector<float>& ints_out ) const
 {
   //pc_out = PointCloudTp();
-  const PointCloud<double>& pc = pc_in.getPCs()[0];
+  const PointCloud<ScalarType>& pc = pc_in.getPCs()[0];
   this->m_model->compensateCloud( pc, pc_in.distances(), pc_in.refAngles(), pc.pointPoss().row(0), ints_out );
   /*for( size_t pt_it=0; pt_it < pc.numPoints(); ++pt_it )
   {
@@ -170,6 +189,8 @@ void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& 
 template<class _PtTp, PclFilterChannel _data_channel>
 bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc_in, std::vector<float>& new_int, size_t h_it, size_t w_it ) const
 {
+  throw std::runtime_error("deprecated?");
+  using Scalar = float;
   const int32_t& h_filter_size = this->getParams().h_filter_size;
   const int32_t& w_filter_size = this->getParams().w_filter_size;
   int32_t h_min = std::max( int32_t(h_it -h_filter_size), int32_t(0) );
@@ -178,10 +199,10 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
   int32_t w_min = std::max( int32_t(w_it -w_filter_size), int32_t(0) );
   int32_t w_max = std::min( int32_t(w_it +w_filter_size)+1, int32_t(this->getParams().width) );
   int32_t w_range = w_max -w_min;
-  double num_pts = static_cast<double>(h_range*w_range);
+  Scalar num_pts = static_cast<Scalar>(h_range*w_range);
 
-  double mean = 0.0;
-  double variance = 0.0;
+  Scalar mean = Scalar(0.0);
+  Scalar variance = Scalar(0.0);
   size_t cur_pt_it = h_it *this->getParams().width +w_it;
   uint32_t w_offset = this->getParams().width -w_range;
 
@@ -195,7 +216,7 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
       {
         //if( new_int[pt_it] > 1.0 )
           //std::cout << "  @" << pt_it << "=" << new_int[pt_it] << std::endl;
-        if( new_int[pt_it] > 0.0 )
+        if( new_int[pt_it] > Scalar(0.0) )
         {
           ++num_valid_pts;
           mean += new_int[pt_it];
@@ -210,7 +231,7 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
     //std::cout << "mean=" << mean << ", " << num_valid_pts << std::endl;
   }
 
-  double diff_cpt;
+  Scalar diff_cpt;
   {
     size_t pt_it = h_min *this->getParams().width +w_min;
     uint32_t num_valid_pts = 0;
@@ -218,11 +239,11 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
     {
       for( size_t w_it=w_min ; w_it < w_max ; ++w_it )
       {
-        if( new_int[pt_it] > 0.0 )
+        if( new_int[pt_it] > Scalar(0.0) )
         {
           ++num_valid_pts;
-          double mean_diff = mean -new_int[pt_it];
-          variance += mean_diff *mean_diff;
+          Scalar mean_diff = mean - new_int[pt_it];
+          variance += mean_diff * mean_diff;
           //std::cout << "var" << pt_it << " = " << variance << std::endl;
         }
         ++pt_it;
@@ -230,7 +251,7 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
       }
       pt_it += w_offset;
     }
-    diff_cpt = mean -new_int[cur_pt_it];
+    diff_cpt = mean - new_int[cur_pt_it];
     //std::cout << "cur_pt_diff=" << diff_cpt << ", var=" << variance << std::endl;
     variance -= diff_cpt*diff_cpt;
     variance /= (num_valid_pts >= 2 ? num_valid_pts -2 : 1); // Bessel correction;
@@ -250,76 +271,135 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
-  std::vector<size_t> valid_pt_its;
-  valid_pt_its.reserve( pc_in.size() );
-  for( size_t pt_it=0 ; pt_it < pc_in.size(); ++pt_it )
-  {
-    if( isValidPoint( pc_in[pt_it] ) && new_int[pt_it] > 0.0 )
+    constexpr bool print_info = false;
+    [[maybe_unused]]  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+    [[maybe_unused]] int ct_int_rep = 0;
+    constexpr bool dont_use_running = false;
+    if constexpr ( dont_use_running )
     {
-      valid_pt_its.push_back( pt_it );
+        std::vector<size_t> valid_pt_its;
+        valid_pt_its.reserve( pc_in.size() );
+        for( size_t pt_it=0 ; pt_it < pc_in.size(); ++pt_it )
+        {
+            if( isValidPoint( pc_in[pt_it] ) && new_int[pt_it] > 0.0 )
+            {
+                valid_pt_its.push_back( pt_it );
+            }
+        }
+        int num_valid_pts = valid_pt_its.size() > 1 ? valid_pt_its.size() -1 : 1;
+
+        // TODO: replace with running variance estimator
+
+        float mean = 0.0;
+        for( const size_t& pt_it : valid_pt_its )
+        {
+            mean += new_int[pt_it];
+            //std::cout << new_int[pt_it] << " => " << mean << std::endl;
+        }
+        mean /= num_valid_pts;
+
+        float variance = 0.0;
+        for( const size_t& pt_it : valid_pt_its )
+        {
+            float mean_diff = mean - new_int[pt_it];
+            variance += mean_diff *mean_diff;
+        }
+        variance /= num_valid_pts;
+        variance = std::sqrt( variance );
+        float max_diff = variance *this->getParams().max_var_mult;
+        //std::cout << "mean=" << mean << ", std_div=" << variance << std::endl;
+
+        for( const size_t& pt_it : valid_pt_its )
+        {
+            if( std::abs( mean - new_int[pt_it] ) < max_diff ) continue;
+            new_int[pt_it] = 0.f;
+            if constexpr ( print_info )
+                ++ct_int_rep;
+
+        }
+        ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << (max_diff + mean));
+    } else {
+
+        const size_t pt_size = pc_in.size();
+        size_t num_valid_pts = 0;
+        float sum = 0.f;
+        float sum_sqrs = 0.f;
+        for( size_t pt_it=0 ; pt_it < pt_size; ++pt_it )
+        {
+            // if ( !isValidPoint( pc_in[pt_it] ) continue; // should not be necessary anymore.
+            if ( new_int[pt_it] <= 1e-6f )
+                continue;
+            const float & new_val = new_int[pt_it];
+            if ( num_valid_pts == 0 )
+            {
+                sum = new_val;
+                num_valid_pts = 1;
+                continue;
+            }
+
+            const float deltaS = sum - num_valid_pts * new_val;
+            const float wn = (1.f) / float(num_valid_pts);
+            const float wn1 = (1.f) / float(num_valid_pts + 1);
+            sum_sqrs += (deltaS * wn) * (deltaS * wn1);
+            sum += new_val;
+            ++num_valid_pts;
+        }
+        if ( num_valid_pts <= 1 ) return;
+        const float mean = sum / num_valid_pts;
+        const float variance = std::sqrt(sum_sqrs / (num_valid_pts-1));
+        const float max_diff = variance * this->getParams().max_var_mult;
+        //std::cout << "mean=" << mean << ", std_div=" << variance << std::endl;
+
+        const float max_threshold = max_diff + mean;
+        for( size_t pt_it = 0 ; pt_it < pt_size; ++pt_it )
+        {
+            if ( new_int[pt_it] < max_threshold ) continue; // true for invalid ones, which are skipped already
+            //if( std::abs( mean - new_int[pt_it] ) < max_diff ) continue;
+            new_int[pt_it] = 0.f;
+            ++ct_int_rep;
+        }
+        if constexpr ( print_info )
+        ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << max_threshold);
     }
-  }
-  int num_valid_pts = valid_pt_its.size() > 1 ? valid_pt_its.size() -1 : 1;
-
-  float mean = 0.0;
-  for( const size_t& pt_it : valid_pt_its )
-  {
-    mean += new_int[pt_it];
-    //std::cout << new_int[pt_it] << " => " << mean << std::endl;
-  }
-  mean /= num_valid_pts;
-
-  float variance = 0.0;
-  for( const size_t& pt_it : valid_pt_its )
-  {
-    float mean_diff = mean -new_int[pt_it];
-    variance += mean_diff *mean_diff;
-  }
-  variance /= num_valid_pts;
-  variance = std::sqrt( variance );
-  float max_diff = variance *this->getParams().max_var_mult;
-  //std::cout << "mean=" << mean << ", std_div=" << variance << std::endl;
-
-  int ct_int_rep = 0;
-  for( const size_t& pt_it : valid_pt_its )
-  {
-    if( std::abs( mean -new_int[pt_it] ) > max_diff )
-    {
-      new_int[pt_it] = 0.f;
-      ++ct_int_rep;
-    }
-  }
-  ROS_INFO_STREAM( "Filtered Points: " << ct_int_rep << "/" << pc_in.size() );
+    if constexpr ( print_info )
+    ROS_INFO_STREAM( "FoC: Filtered Points: " << ct_int_rep << "/" << pc_in.size()
+     << " dt: " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() );
 }
 
 
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::filterOutlier( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
+  throw std::runtime_error("deprecated?");//static_assert (always_false<int>);
   int ct_int_rep = 0;
   for( size_t h_it=0 ; h_it < this->getParams().height ; ++h_it )
   {
     for( size_t w_it=0 ; w_it < this->getParams().width ; ++w_it )
     {
       if( isValidPoint( pc_in[h_it *this->getParams().width +w_it] ) 
-          && getIntensity<_PtTp, _data_channel>( pc_in, h_it *this->getParams().width +w_it ) > 0.0 )
+          && (getIntensity<_PtTp, _data_channel>( pc_in, h_it *this->getParams().width +w_it ) > 0.0) )
         ct_int_rep += filterOutlierPoint( pc_in, new_int, h_it, w_it );
     }
   }
-  ROS_INFO_STREAM( "Filtered Points: " << ct_int_rep << "/" << pc_in.size() );
+  ROS_INFO_STREAM( "Fo: Filtered Points: " << ct_int_rep << "/" << pc_in.size() );
 }
 
 
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::normalizeIntensity( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
-  new_int = std::vector<float>( pc_in.size(), 0.0 );
-  static constexpr float max_val = PointIntensity<_PtTp, _data_channel>::max_val;
+  new_int = std::vector<float>( pc_in.size(), 0.f );
+  static constexpr float inv_max_val = float(1.f)/PointIntensity<_PtTp, _data_channel>::max_val;
   for( size_t pt_it=0 ; pt_it < pc_in.size() ; ++pt_it )
   {
+    if ( !isValidPoint( pc_in[pt_it] ) )
+    {
+        new_int[pt_it] = 0.f; // mark as unusable
+        continue;
+    }
     float cur_int = getIntensity<_PtTp, _data_channel>( pc_in, pt_it );
     //std::cout << cur_int << "->";
-    new_int[pt_it] = static_cast<float>(cur_int) /max_val;
+    new_int[pt_it] = cur_int * inv_max_val;
     //std::cout << new_int[pt_it] << ", " << std::endl;
   }
 }

@@ -1,0 +1,40 @@
+<launch>
+<!-- Launch file for ouster OS0-128 LiDAR -->
+
+    <include file="$(find fast_lio)/launch/drz_ouster_128_eval.launch"></include>
+
+    <arg name="num_filter_points" default="2"/>
+    <arg name="size_surf" default="0.5"/>
+    <arg name="size_map" default="0.5"/>
+
+    <arg name="use_channel" default="0"/>
+    <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "max_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
+    <!--<arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "max_range": 7.88972, "min_range": -0.839182, "wave_offset": 2393.75, "wave_length" : 0.187729, "wave_per" : -0.043118, "v_0": 2.65737, "v_1": 0.13157, "v_2": 0.380637, "file_name" : "int_wdac4w_poly"}'/>-->
+    <!-- arg name="params" default='{"type": "weighted_da", "w_dist": 0.905372, "w_angle": -0.215389}'/ -->
+    <!--<arg name="params" default='{"type": "none", "w_dist": 1.0, "w_angle": 0.0}'/>-->
+    <arg name="model" default="None"/>
+    <!--<arg name="model" default="weighted_dac4w_poly"/>-->
+
+    <arg name="data_set" default="2021_07_02_baustelle/" />
+    <arg name="data_bag" default="bag_mbzirc8_2021-07-02-16-44-52" />
+    <arg name="data_path" value="/home/jquenzel/bags/" />
+    <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
+
+    <arg name="grad_w" default="0.0" />
+    <param name="ref_grad_w" type="double" value="$(arg grad_w)"/>
+    <param name="filter_size_surf" type="double" value="$(arg size_surf)" />
+    <param name="filter_size_map" type="double" value="$(arg size_map)" />
+    <param name="point_filter_num" type="int" value="$(arg num_filter_points)"/>
+    <param name="filter_use_channel" type="int" value="$(arg use_channel)"/>
+    <param name="comp_model" type="string" value="$(arg model)"/>
+    <param name="comp_params" type="string" value="$(arg params)"/>
+    <param name="w_filter_size" type="int" value="2"/>
+    <param name="h_filter_size" type="int" value="2"/>
+    <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
+
+    <arg name="bag_path" value="$(arg folder)/$(arg data_bag).bag"/>
+    <!--<arg name="bag_args" value="-clock -start=0 -delay=3 -rate=1.0 /tf_static:=/tf_static_old /tf:=/tf_old "/>-->
+    <!--<node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)" required="true"/>-->
+
+</launch>
+
