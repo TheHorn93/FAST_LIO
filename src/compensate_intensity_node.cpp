@@ -11,7 +11,7 @@
 #include <Eigen/Core>
 #include <livox_ros_driver/CustomMsg.h>
 #include "preprocess.h"
-#include "reflectance_grad.h"
+//#include "reflectance_grad.h"
 #include "input_pcl_filter.h"
 
 using PointCloudType = pcl::PointCloud<ouster_ros::Point>;
@@ -151,6 +151,7 @@ int main( int argc, char** argv )
     input_filter->initCompensationModel( comp_type, comp_params );
     nh.param<int>("point_filter/width", input_filter->getParams().width, 1024);
     nh.param<int>("point_filter/height", input_filter->getParams().height, 128);
+    nh.param<bool>("requires_os_shift",input_filter->getParams().requires_os_shift, false);
     nh.param<int >("w_filter_size", input_filter->getParams().w_filter_size, 4);
     nh.param<int>("h_filter_size", input_filter->getParams().h_filter_size, 4);
     nh.param<double>("point_filter/max_var_mult", input_filter->getParams().max_var_mult, 1.0);

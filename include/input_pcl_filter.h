@@ -30,6 +30,7 @@ public:
     int w_filter_size;
     int width;
     int height;
+    bool requires_os_shift = false;
   };
 
   Params& getParams();

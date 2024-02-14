@@ -2,3 +2,6 @@
 	path = include/ikd-Tree
 	url = https://github.com/TheHorn93/ikd-Tree.git
 	branch = fast_lio
+[submodule "deps/lidar_intensity_correction"]
+	path = deps/lidar_intensity_correction
+	url = git@git.ais.uni-bonn.de:drz/lidar_intensity_correction.git

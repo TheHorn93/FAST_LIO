@@ -5,7 +5,10 @@
 
 #include "input_pcl_filter.h"
 //#include "lidar_intensity_correction/load_files.h"
+#include "ConfiguruLoader.h"
+#ifndef COMP_ONLY
 #include "load_files.h"
+#endif
 
 template<class _Tp, class _ITp>
 struct TypeIsEqual
@@ -126,13 +129,13 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, st
   filterOutlierCloud( pc_in, ints_out );
   PCIntensityComputation pc_int_cor;
   [[maybe_unused]] std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-  pc_int_cor.addPC(pc_in, ints_out, PcInfoIntensity());
+  pc_int_cor.addPC(pc_in, ints_out, PcInfoIntensity(), this->getParams().requires_os_shift);
   [[maybe_unused]] const double t1 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
   Eigen::MatrixXd pose = Eigen::MatrixXd::Zero(7,1);
   pose(3,0) = 1;
   pc_int_cor.poses() = pose;
-  pc_int_cor.callOrdered( 128, 1024, this->getParams().h_filter_size, this->getParams().w_filter_size );
+  pc_int_cor.callOrdered( this->getParams().height, this->getParams().width, this->getParams().h_filter_size, this->getParams().w_filter_size );
   [[maybe_unused]] const double t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
   //pc_int_cor.call(21, 15);
   //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }

@@ -8,6 +8,7 @@
     <arg name="num_filter_points" default="2"/>
     <arg name="size_surf" default="0.5"/>
     <arg name="size_map" default="0.5"/>
+    <arg name="requires_os_shift" default="true"/>
 
     <arg name="use_channel" default="1"/>
     <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "max_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
@@ -16,7 +17,7 @@
     <!-- arg name="model" default="None"/-->
     <arg name="model" default="weighted_dac4w_poly"/>
 
-	<arg name="data_set" default="nc_math/" />
+    <arg name="data_set" default="nc_math/" />
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
     <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
     
@@ -28,6 +29,7 @@
     <param name="filter_use_channel" type="int" value="$(arg use_channel)"/>
     <param name="comp_model" type="string" value="$(arg model)"/>
     <param name="comp_params" type="string" value="$(arg params)"/>
+    <param name="requires_os_shift" type="bool" value="$(arg requires_os_shift)"/>
     <param name="w_filter_size" type="int" value="2"/>
     <param name="h_filter_size" type="int" value="2"/>
     <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
