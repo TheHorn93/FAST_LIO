@@ -277,6 +277,7 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
     constexpr bool print_info = false;
     [[maybe_unused]]  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
     [[maybe_unused]] int ct_int_rep = 0;
+    [[maybe_unused]] size_t num_valid_pts = 0;
     constexpr bool dont_use_running = false;
     if constexpr ( dont_use_running )
     {
@@ -323,8 +324,19 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
         ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << (max_diff + mean));
     } else {
 
+        if constexpr ( print_info )
+        {
+            float new_int_min = 2<<16, new_int_max = -1;
+            for ( const float & f : new_int )
+            {
+                if ( f < new_int_min ) new_int_min = f;
+                if ( f > new_int_max ) new_int_max = f;
+            }
+            ROS_INFO_STREAM("ints: " << new_int_min << " " << new_int_max);
+        }
+
         const size_t pt_size = pc_in.size();
-        size_t num_valid_pts = 0;
+
         float sum = 0.f;
         float sum_sqrs = 0.f;
         for( size_t pt_it=0 ; pt_it < pt_size; ++pt_it )
@@ -332,6 +344,11 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
             // if ( !isValidPoint( pc_in[pt_it] ) continue; // should not be necessary anymore.
             if ( new_int[pt_it] <= 1e-6f )
                 continue;
+
+            if constexpr ( print_info )
+            if ( (pt_it & 1023) == 0 )
+                ROS_INFO_STREAM("pt: " << pt_it << " i: " << new_int[pt_it] << " p: " << pc_in.points[pt_it].getVector3fMap().transpose());
+
             const float & new_val = new_int[pt_it];
             if ( num_valid_pts == 0 )
             {
@@ -362,10 +379,10 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
             ++ct_int_rep;
         }
         if constexpr ( print_info )
-        ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << max_threshold);
+        ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << max_threshold << " for: " << num_valid_pts << " 0ofThose: " << ct_int_rep);
     }
     if constexpr ( print_info )
-    ROS_INFO_STREAM( "FoC: Filtered Points: " << ct_int_rep << "/" << pc_in.size()
+    ROS_INFO_STREAM( "FoC: Filtered Points: " << ct_int_rep << "/" << num_valid_pts << " of " << pc_in.size()
      << " dt: " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() );
 }
 
@@ -387,24 +404,26 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlier( const PointCloudTp& pc_in, 
   ROS_INFO_STREAM( "Fo: Filtered Points: " << ct_int_rep << "/" << pc_in.size() );
 }
 
-
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::normalizeIntensity( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
+  constexpr bool print_info = false;
+  size_t num_pts = pc_in.size();
   new_int = std::vector<float>( pc_in.size(), 0.f );
-  static constexpr float inv_max_val = float(1.f)/PointIntensity<_PtTp, _data_channel>::max_val;
-  for( size_t pt_it=0 ; pt_it < pc_in.size() ; ++pt_it )
+  [[maybe_unused]] float new_max_val = 0, new_min_val = 1e5;
+  static constexpr float inv_max_val = 1.f/PointIntensity<_PtTp, _data_channel>::max_val;
+  for( size_t pt_it=0 ; pt_it < num_pts; ++pt_it )
   {
-    if ( !isValidPoint( pc_in[pt_it] ) )
-    {
-        new_int[pt_it] = 0.f; // mark as unusable
-        continue;
-    }
+    if ( !isValidPoint( pc_in[pt_it] ) || pc_in[pt_it].getVector3fMap().squaredNorm() < 0.1f )
+        continue; // already set to 0.
     float cur_int = getIntensity<_PtTp, _data_channel>( pc_in, pt_it );
-    //std::cout << cur_int << "->";
     new_int[pt_it] = cur_int * inv_max_val;
-    //std::cout << new_int[pt_it] << ", " << std::endl;
+    if constexpr ( print_info ) if ( new_max_val < cur_int ) new_max_val = cur_int;
+    if constexpr ( print_info ) if ( new_min_val > cur_int ) new_min_val = cur_int;
+    //new_int[pt_it] = float(cur_int) / float(PointIntensity<_PtTp, _data_channel>::max_val);
   }
+  if constexpr ( print_info )
+  ROS_INFO_STREAM("" << (PointIntensity<_PtTp, _data_channel>::max_val)<< " " << inv_max_val  << " actual_max_val: " << new_max_val << " " << new_min_val);
 }
 
 

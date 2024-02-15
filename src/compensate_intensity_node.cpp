@@ -62,7 +62,7 @@ void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, Poin
         //std::cout << pc_out.points.back().x << ", " << pc_out.points.back().y << ", " << pc_out.points.back().z << ", " << pc_out.points.back().intensity << ", " << pc_out.points.back().reflectivity << std::endl;
         //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
-    ROS_INFO_STREAM( "VALID Ints: " << pc_out.points.size() << " max: " << maxVal );
+    ROS_INFO_STREAM( "VALID Ints: " << pc_out.points.size() << " max: " << maxVal << " of: " << num_pts );
 }
 
 void publishNormals(const pcl::PointCloud<ouster_ros::Point> & pc_in, const Eigen::Matrix3Xf & normals, const std_msgs::Header & header )
