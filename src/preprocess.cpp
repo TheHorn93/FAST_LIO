@@ -215,6 +215,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
   pl_surf.reserve(plsize);
   if (feature_enabled)
   {
+    throw std::runtime_error("dont ... just dont.");
     for (int i = 0; i < N_SCANS; i++)
     {
       pl_buff[i].clear();
@@ -276,6 +277,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
     double time_stamp = msg->header.stamp.toSec();
     // cout << "===================================" << endl;
     // printf("Pt size = %d, N_SCANS = %d\r\n", plsize, N_SCANS);
+    //float maxRefl = 0;
     //size_t num_ref = 0;
     for (int i = 0; i < pl_orig.points.size(); i++)
     {
@@ -294,6 +296,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
       //added_pt.intensity = pl_orig.points[i].intensity /max_ref;
       added_pt.intensity = pl_orig.points[i].intensity;
       added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
+      //if ( maxRefl < added_pt.reflectance ) maxRefl = added_pt.reflectance;
       //added_pt.intensity = new_ints[i];
       //added_pt.reflectance = new_ints[i];
       //if( added_pt.intensity > 0.0 ) ++num_ref;
@@ -307,6 +310,7 @@ void Preprocess::oust64_handler(const PCLFilterModelBase<ouster_ros::Point>& inp
       //if ( oMaxVal < added_pt.intensity ) oMaxVal = added_pt.intensity;
       pl_surf.points.push_back(added_pt);
     }
+    //ROS_INFO_STREAM("maxRefl: " << maxRefl );
     //std::cout << "ValidPoints: " << num_ref << "/" << pl_surf.points.size();
   }
 

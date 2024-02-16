@@ -42,7 +42,7 @@ Eigen::Matrix<double, IrregularGrid::mat_p_size, 1> IrregularGrid::getPolynomial
   Eigen::Matrix<double,mat_p_size,1> vec_z = Eigen::Matrix<double,mat_p_size,1>::Zero();
   for( size_t p_it=0 ; p_it < NUM_MATCH_POINTS ; ++p_it )
   {
-    vec_z[3+p_it] = pts_near[p_it].reflectance;
+    vec_z[6+p_it] = pts_near[p_it].intensity;//reflectance; // reflectance channel is dropped by the voxelgrid filter..., but we write it into intensity either way...
   }
 
   return mat_p.colPivHouseholderQr().solve( vec_z );
@@ -102,6 +102,7 @@ Eigen::Vector3d IrregularGrid::getIntensityGradOnPlane( const Eigen::Vector3d& p
 
 double IrregularGrid::call( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal, Eigen::Vector3d& grad_out )
 {
+  constexpr bool print_info = false;
   //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl; 
   Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
   Eigen::Quaterniond rot_quad = getRotationToPlane( normal );
@@ -115,6 +116,23 @@ double IrregularGrid::call( const PointType& pt, const PointVector& pts_near, co
   Eigen::Matrix<double, 3, 2> mat_grad = getGradientMat( lambda );
   Eigen::Vector3d grad_on_plane = getIntensityGradOnPlane( pt_pos_rot, mat_grad );
 
+
+  if constexpr ( print_info )
+  {
+      static int cnt = 0;
+      ++cnt;
+      if ( (cnt & 1023) == 0 )
+      {
+          cnt = 0;
+          Eigen::Matrix<double, NUM_MATCH_POINTS, 1> reflectances, intensities;
+          for ( int i = 0; i < pts_near.size(); ++i )
+          {
+              reflectances(i) = pts_near[i].reflectance;
+              intensities(i) = pts_near[i].intensity;
+          }
+          ROS_INFO_STREAM("A: " << int_at_pos << " L: " << lambda.transpose() << " int: " << pt.reflectance<< " m: " << reflectances.transpose() << " i: " << intensities.transpose() );
+      }
+  }
   //double grad_norm = grad_on_plane.norm();
   //std::cout << "grad_n" << grad_norm << " <- " << grad_on_plane.transpose()<< std::endl;
   grad_out = (rot_quad.conjugate() *grad_on_plane).transpose()* (Eigen::Matrix<double, 3,3>::Identity() - normal * normal.transpose());

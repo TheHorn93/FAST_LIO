@@ -543,17 +543,40 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     //std::cout << "Pub registered" << std::endl;
     if(scan_pub_en)
     {
+
+        float maxVal = 0, maxValI = 0;
+        if constexpr ( false )
+        {
+            for (int i = 0; i < feats_undistort->size(); i++)
+            {
+                if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
+                if ( maxVal < feats_undistort->points[i].reflectance ) maxVal = feats_undistort->points[i].reflectance;
+            }
+            std::cout << "maxPubVal: " << maxVal << " I: " << maxValI << std::endl;
+            maxVal = 0; maxValI = 0;
+            for (int i = 0; i < feats_down_body->size(); i++)
+            {
+                if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
+                if ( maxVal < feats_down_body->points[i].reflectance ) maxVal = feats_down_body->points[i].reflectance;
+            }
+            std::cout << "maxPubVal: " << maxVal << " I: " << maxValI << std::endl;
+            maxVal = 0; maxValI = 0;
+        }
+
         PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
         int size = laserCloudFullRes->points.size();
         PointCloudXYZI::Ptr laserCloudWorld( \
                         new PointCloudXYZI(size, 1));
 
+        //float maxVal = 0, maxValI = 0;
         for (int i = 0; i < size; i++)
         {
             RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
                                 &laserCloudWorld->points[i]);
+            if ( maxValI < laserCloudWorld->points[i].intensity ) maxValI = laserCloudWorld->points[i].intensity;
+            if ( maxVal < laserCloudWorld->points[i].reflectance ) maxVal = laserCloudWorld->points[i].reflectance;
         }
-
+        ROS_INFO_STREAM_THROTTLE(1, "maxPubVal: " << maxVal << " I: " << maxValI);
         sensor_msgs::PointCloud2 laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
@@ -981,7 +1004,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             //std::cout << "Add to state" << std::endl;
             ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
                                                     VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            ekfom_data.h(res_it+1) = int_error *ref_grad_w;
+            ekfom_data.h(res_it+1) = -int_error *ref_grad_w;
+
             //std::cout << ref_grad.norm() *ref_grad_w << " -> " << int_error *ref_grad_w <<std::endl;
             //std::cout << grad_length << " -> " << ref_grad << std::endl;
             //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
@@ -1277,6 +1301,29 @@ int main(int argc, char** argv)
             /*** downsample the feature points in a scan ***/
             downSizeFilterSurf.setInputCloud(feats_undistort); // builds pcl::Voxelgrid<PointXYZINormal>, builds equally spaced 3D Grid and filters for centerpoints
             downSizeFilterSurf.filter(*feats_down_body); // Apply grid filter and write to pcl::PointCloud &feats_down_body
+
+            if constexpr ( false )
+            {
+                // voxelgrid filter drops reflectance channel.
+                float maxVal = 0, maxValI = 0;
+                for (int i = 0; i < feats_undistort->size(); i++)
+                {
+                    if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
+                    if ( maxVal < feats_undistort->points[i].reflectance ) maxVal = feats_undistort->points[i].reflectance;
+                }
+                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << std::endl;
+                maxVal = 0; maxValI = 0;
+                for (int i = 0; i < feats_down_body->size(); i++)
+                {
+                    if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
+                    if ( maxVal < feats_down_body->points[i].reflectance ) maxVal = feats_down_body->points[i].reflectance;
+                }
+                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << std::endl;
+                maxVal = 0; maxValI = 0;
+
+            }
+
+
             t1 = omp_get_wtime();
             feats_down_size = feats_down_body->points.size();
             /*** initialize the map kdtree ***/

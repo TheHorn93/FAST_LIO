@@ -1,11 +1,8 @@
 <launch>
 <!-- Launch file for ouster OS0-128 LiDAR -->
 
-    <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch">
 
-    </include>
-    
-    <arg name="num_filter_points" default="2"/>
+    <arg name="num_filter_points" default="2"/> <!-- half of original, since the normal computation and compensation removes quite some points already! -->
     <arg name="size_surf" default="0.5"/>
     <arg name="size_map" default="0.5"/>
     <arg name="requires_os_shift" default="true"/>
@@ -21,7 +18,7 @@
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
     <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
     
-    <arg name="grad_w" default="0.0" />
+    <arg name="grad_w" default="0.1" />
     <param name="ref_grad_w" type="double" value="$(arg grad_w)"/>
     <param name="filter_size_surf" type="double" value="$(arg size_surf)" />
     <param name="filter_size_map" type="double" value="$(arg size_map)" />
@@ -40,4 +37,6 @@
     <arg name="bag_args" value="--clock --start=0 --delay=3 --rate=1.0"/>
     <node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)" required="true"/>
 
+    <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch">
+    </include>
 </launch>

@@ -43,7 +43,7 @@ void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, Poin
     //getValidPointsIdxs( pc_in, idxs );
     const size_t num_pts = pc_in.points.size();
     pc_out.points.reserve( num_pts );
-    float maxVal = 0;
+    float maxVal = 0, maxRefl = 0;
     // TODO possible parallel
     for( size_t pt_it=0; pt_it < num_pts; ++pt_it )
     {
@@ -59,10 +59,11 @@ void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, Poin
         //pc_out.points[pt_it].intensity = cur_int;
         //pc_out.points[pt_it].reflectivity = static_cast<uint16_t>(cur_int*65535);
         if ( maxVal < cur_int ) maxVal = cur_int;
+        if ( maxRefl < cur_pt.reflectivity ) maxRefl = cur_pt.reflectivity;
         //std::cout << pc_out.points.back().x << ", " << pc_out.points.back().y << ", " << pc_out.points.back().z << ", " << pc_out.points.back().intensity << ", " << pc_out.points.back().reflectivity << std::endl;
         //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
-    ROS_INFO_STREAM( "VALID Ints: " << pc_out.points.size() << " max: " << maxVal << " of: " << num_pts );
+    ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << pc_out.points.size() << " max: " << maxVal << " ( " << maxRefl << " ) of: " << num_pts );
 }
 
 void publishNormals(const pcl::PointCloud<ouster_ros::Point> & pc_in, const Eigen::Matrix3Xf & normals, const std_msgs::Header & header )
