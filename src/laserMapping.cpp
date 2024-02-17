@@ -308,14 +308,12 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process<PointCloudXYZI>(nullptr,//filter_input.get(),
-                   msg, ptr);
+    p_pre->process<PointCloudXYZI>(msg, ptr);
     lidar_buffer.push_back(ptr);
     if ( store_compensated_ && p_pre_raw )
     {
         PointCloudOuster::Ptr ptr_raw(new PointCloudOuster());
-        p_pre_raw->process<PointCloudOuster>(nullptr,//filter_input.get(),
-                           msg, ptr_raw);
+        p_pre_raw->process<PointCloudOuster>(msg, ptr_raw);
         lidar_buffer_raw.push_back(ptr_raw);
     }
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
@@ -1076,51 +1074,14 @@ int main(int argc, char** argv)
     nh.param<double>("mapping/b_acc_cov",b_acc_cov,0.0001);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
-//    nh.param<std::string>("comp_model", comp_type, "None");
-//    nh.param<std::string>("comp_params", comp_params, "{}");
     nh.param<int>("filter_use_channel", use_channel, 0);
-//    switch( p_pre->lidar_type )
-//    {
-//      case LID_TYPE::OUST64:
-//        std::cout << "CHANNEL" << use_channel << std::endl;
-//        if( use_channel == PCLFILTER_INTENSITY )
-//        {
-//            ROS_WARN_STREAM( "Using intensity channel" );
-//            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_INTENSITY>>();
-//        }
-//        else if( use_channel == PCLFILTER_REFLECTIVITY )
-//        {
-//            ROS_WARN_STREAM( "Using reflectivity channel" );
-//            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_REFLECTIVITY>>();
-//        }
-//        else if( use_channel == PCLFILTER_AMBIENCE )
-//        {
-//            ROS_WARN_STREAM( "Using ambience channel" );
-//            filter_input = std::make_unique<PCLFilter<ouster_ros::Point, PCLFILTER_AMBIENCE>>();
-//        }
-//        else
-//        {
-//            ROS_ERROR_STREAM( "Invalid intensity channel: " << use_channel );
-//            return -1;
-//        }
-//        filter_input->initCompensationModel( comp_type, comp_params );
-//        break;
-//      default:
-//        return -1;
-//    }
     nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
     nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, US);
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
-//    nh.param<int>("point_filter/width", filter_input->getParams().width, 1024);
-//    nh.param<int>("point_filter/height", filter_input->getParams().height, 128);
-//    nh.param<int >("w_filter_size", filter_input->getParams().w_filter_size, 5);
-//    nh.param<int>("h_filter_size", filter_input->getParams().h_filter_size, 4);
-//    nh.param<double>("point_filter/max_var_mult", filter_input->getParams().max_var_mult, 1.0);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("dont_compensate", dont_compensate, false);
     nh.param<bool>("store_compensated", store_compensated_, false);
     nh.param<bool>("has_lidar_end_time", has_lidar_end_time_, false);
-    nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
     nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, true);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
@@ -1129,8 +1090,10 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+
     std::stringstream sstr, grad_sstr;
-    sstr << "/home/jhorn/Documents/Uni/MasterThesis/data/temp_data/";
+    //sstr << "/home/jhorn/Documents/Uni/MasterThesis/data/temp_data/";
+    sstr << "./fast_lio_after_map_poses_";
     //sstr << "/home/drz/Documents/eval/fast_lio_out/";
     grad_sstr << sstr.str() << "gradients.csv";
     sstr << generatePathFileName( ref_grad_w, filter_size_surf_min, filter_size_map_min, p_pre->point_filter_num );
@@ -1154,7 +1117,7 @@ int main(int argc, char** argv)
         p_pre_raw->time_unit = p_pre->time_unit;
         p_pre_raw->SCAN_RATE = p_pre->SCAN_RATE;
         p_pre_raw->point_filter_num = 1;
-        p_pre_raw->feature_enabled = false;
+        p_pre_raw->pass_through = true;
 
         {
             float time_unit_scale = 1.f;

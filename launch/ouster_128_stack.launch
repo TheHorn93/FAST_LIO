@@ -1,11 +1,18 @@
 <launch>
 <!-- Launch file for ouster OS0-128 LiDAR -->
 
+    <rosparam command="load" file="$(find fast_lio)/config/nce_ouster128.yaml" />
 
-    <arg name="num_filter_points" default="2"/> <!-- half of original, since the normal computation and compensation removes quite some points already! -->
+    <arg name="dont_load_params" value="true" /> <!-- loaded above already... -->
+    <arg name="prepare_for_parameter_estimation" default="false" />
+    <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
+
+    <arg name="num_filter_points" default="2"/>
     <arg name="size_surf" default="0.5"/>
     <arg name="size_map" default="0.5"/>
     <arg name="requires_os_shift" default="true"/>
+
+    <param name="common/comp_lid_topic" type="string" value="/os_cloud_node/points" if="$(arg prepare_for_parameter_estimation)" />
 
     <arg name="use_channel" default="1"/>
     <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "max_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
@@ -18,8 +25,9 @@
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
     <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
     
-    <arg name="grad_w" default="0.1" />
-    <param name="ref_grad_w" type="double" value="$(arg grad_w)"/>
+    <arg name="grad_w" default="0.0" if="$(arg prepare_for_parameter_estimation)" />
+    <arg name="grad_w" default="0.1" unless="$(arg prepare_for_parameter_estimation)" />
+    <param name="ref_grad_w" type="double" value="$(arg grad_w)" />
     <param name="filter_size_surf" type="double" value="$(arg size_surf)" />
     <param name="filter_size_map" type="double" value="$(arg size_map)" />
     <param name="point_filter_num" type="int" value="$(arg num_filter_points)"/>
@@ -38,5 +46,8 @@
     <node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)" required="true"/>
 
     <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch">
+        <arg name="dont_load_params" value="$(arg dont_load_params)"/>
+        <arg name="prepare_for_parameter_estimation" value="$(arg prepare_for_parameter_estimation)"/>
+        <arg name="store_compensated" value="$(arg store_compensated)"/>
     </include>
 </launch>

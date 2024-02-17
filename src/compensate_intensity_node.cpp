@@ -37,25 +37,42 @@ bool ptIsValid( const ouster_ros::Point& pt )
 //    }
 //}
 
+ouster_ros::Point getInvalidPoint ( )
+{
+    ouster_ros::Point invalid_point;
+    invalid_point.getVector4fMap().setZero();
+    invalid_point.intensity = 0;
+    invalid_point.t = 0;
+    invalid_point.reflectivity = 0;
+    invalid_point.ring = 0;
+    //invalid_point.noise = 0;
+    invalid_point.ambient = 0;
+    invalid_point.range = 0;
+    return invalid_point;
+}
+
 void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
 {
     //std::vector<uint32_t> idxs;
     //getValidPointsIdxs( pc_in, idxs );
     const size_t num_pts = pc_in.points.size();
-    pc_out.points.reserve( num_pts );
+    size_t num_valid = 0;
+    pc_out.points.resize( num_pts, getInvalidPoint() );
     float maxVal = 0, maxRefl = 0;
     // TODO possible parallel
+    const ouster_ros::Point inv_pt = getInvalidPoint();
     for( size_t pt_it=0; pt_it < num_pts; ++pt_it )
     {
         float cur_int = ints[pt_it];
         if( cur_int <= 1e-6f ) continue; // invalid ones are set to 0 before hand
         //if( !ptIsValid(pc_in.points[pt_it]) ) continue; // unnecessary, because checked multiple times before...
         if ( cur_int > 1.f ) cur_int = 1.f;
-        // TODO: this does not make sense?
-        ouster_ros::Point& cur_pt ( pc_in.points[pt_it] );
+        ouster_ros::Point& cur_pt = pc_out.points[pt_it];
+        cur_pt = pc_in.points[pt_it];
         cur_pt.intensity = cur_int;
+        ++num_valid;
         //cur_pt.reflectivity = static_cast<uint16_t>(cur_int*65535);
-        pc_out.points.emplace_back( cur_pt );
+        //pc_out.points.emplace_back( cur_pt );
         //pc_out.points[pt_it].intensity = cur_int;
         //pc_out.points[pt_it].reflectivity = static_cast<uint16_t>(cur_int*65535);
         if ( maxVal < cur_int ) maxVal = cur_int;
@@ -63,7 +80,7 @@ void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, Poin
         //std::cout << pc_out.points.back().x << ", " << pc_out.points.back().y << ", " << pc_out.points.back().z << ", " << pc_out.points.back().intensity << ", " << pc_out.points.back().reflectivity << std::endl;
         //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
-    ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << pc_out.points.size() << " max: " << maxVal << " ( " << maxRefl << " ) of: " << num_pts );
+    ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << num_valid << " of " << pc_out.points.size() << " max: " << maxVal << " ( " << maxRefl << " ) of: " << num_pts );
 }
 
 void publishNormals(const pcl::PointCloud<ouster_ros::Point> & pc_in, const Eigen::Matrix3Xf & normals, const std_msgs::Header & header )
@@ -85,6 +102,7 @@ void publishNormals(const pcl::PointCloud<ouster_ros::Point> & pc_in, const Eige
     pub_normals.publish(msg_out);
 }
 
+// TODO: move all the processing out of the callback itself
 void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
     pcl::PointCloud<ouster_ros::Point> pc_in;
