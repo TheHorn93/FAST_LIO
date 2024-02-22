@@ -6,23 +6,9 @@
 namespace reflectance
 {
 
-
-Eigen::Vector3d projectPtToPlane( const Eigen::Vector3d& pt_pos, const Eigen::Vector3d& plane_anchor, const Eigen::Vector3d& normal )
-{
-  Eigen::Vector3d pt_offset = pt_pos -plane_anchor;
-  double dist = pt_offset.dot( normal );
-  DEBUG_OUT( "pt=" << pt_pos << std::endl << "dist=" << dist << std::endl << "pt_out=" << pt_offset -dist *normal );
-  return pt_pos -dist *normal;
-}
-
-Eigen::Quaterniond getRotationToPlane( const Eigen::Vector3d& plane_normal )
-{
-  static Eigen::Vector3d z_axis(0,0,1);
-  return Eigen::Quaterniond().setFromTwoVectors( plane_normal, z_axis );
-}
-
 using MatchVector = Eigen::Matrix<double, 1, NUM_MATCH_POINTS>;
 
+#ifdef BLUB_NOIPDEN
 
 class AttractionCenter
 {
@@ -145,6 +131,7 @@ class AttractionCenter
   }
 };
 
+#endif
 
 
 class IrregularGrid
@@ -152,18 +139,18 @@ class IrregularGrid
 public:
   static constexpr int mat_p_size = 6+NUM_MATCH_POINTS;
 
-  static Eigen::Vector3d transformTo2DPlane( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal,
+  static Eigen::Vector3d transformTo2DPlane( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal, const double & dist,
                                              const Eigen::Quaterniond& rot_quad, Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj );
 
-  static Eigen::Matrix<double, mat_p_size, 1> getPolynomial( const PointVector& pts_near, const Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj );
+  static Eigen::Matrix<double, 6, 1> getPolynomial( const PointVector& pts_near, const Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj );
 
-  static Eigen::Matrix<double, 3, 2> getGradientMat( const Eigen::Matrix<double, 6, 1>& lambda );
+  //static Eigen::Matrix<double, 3, 2> getGradientMat( const Eigen::Matrix<double, 6, 1>& lambda );
 
-  static double getIntensityFromPosOnPlane( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda );
+  static double getIntensityFromPosOnPlane( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda );
 
-  static Eigen::Vector3d getIntensityGradOnPlane( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double, 3, 2>& grads );
+  static Eigen::Vector2d getIntensityGradOnPlane( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda );
 
-  static double call( const PointType& pt, const PointVector& pts_near, const Eigen::Vector3d& normal, Eigen::Vector3d& grad_out );
+  static double computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, Eigen::Vector3d& grad_out );
 };
 
 }

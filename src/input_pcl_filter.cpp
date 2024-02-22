@@ -326,7 +326,7 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
 
         if constexpr ( print_info )
         {
-            float new_int_min = 2<<16, new_int_max = -1;
+            float new_int_min = 1<<16, new_int_max = -1;
             for ( const float & f : new_int )
             {
                 if ( f < new_int_min ) new_int_min = f;

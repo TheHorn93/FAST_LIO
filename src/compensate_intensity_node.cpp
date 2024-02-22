@@ -19,6 +19,7 @@ using PointCloudNormalType = pcl::PointCloud<pcl::PointNormal>;
 
 std::unique_ptr<PCLFilterModelBase<ouster_ros::Point>> input_filter;
 ros::Publisher pub_out, pub_normals;
+bool g_pass_through = false;
 
 inline
 bool ptIsValid( const ouster_ros::Point& pt )
@@ -105,6 +106,12 @@ void publishNormals(const pcl::PointCloud<ouster_ros::Point> & pc_in, const Eige
 // TODO: move all the processing out of the callback itself
 void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
+    if ( g_pass_through )
+    {
+        pub_out.publish( msg );
+        return;
+    }
+
     pcl::PointCloud<ouster_ros::Point> pc_in;
     pcl::fromROSMsg(*msg, pc_in);
 
@@ -141,7 +148,9 @@ int main( int argc, char** argv )
     ros::NodeHandle nh;
 
     int use_channel;
+    double ref_grad_w = 0.;
     std::string comp_type, comp_params, lidar_topic;
+    //nh.param<bool>("bypass_all", bypass_all, false);
     nh.param<std::string>("common/lid_topic", lidar_topic, "/livox/lidar");
     nh.param<std::string>("comp_model", comp_type, "None");
     nh.param<std::string>("comp_params", comp_params, "{}");
@@ -174,6 +183,9 @@ int main( int argc, char** argv )
     nh.param<int >("w_filter_size", input_filter->getParams().w_filter_size, 4);
     nh.param<int>("h_filter_size", input_filter->getParams().h_filter_size, 4);
     nh.param<double>("point_filter/max_var_mult", input_filter->getParams().max_var_mult, 1.0);
+    nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
+    if ( ref_grad_w < 0. )
+        g_pass_through = true;
 
     ROS_WARN_STREAM( "Filter: w=" << input_filter->getParams().w_filter_size << ", h=" << input_filter->getParams().h_filter_size );
 

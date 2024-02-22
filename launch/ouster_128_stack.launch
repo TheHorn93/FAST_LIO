@@ -7,19 +7,30 @@
     <arg name="prepare_for_parameter_estimation" default="false" />
     <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="num_filter_points" default="2"/>
+    <arg name="num_filter_points" default="4"/>
     <arg name="size_surf" default="0.5"/>
-    <arg name="size_map" default="0.5"/>
+    <arg name="size_map" default="0.25"/>
     <arg name="requires_os_shift" default="true"/>
 
     <param name="common/comp_lid_topic" type="string" value="/os_cloud_node/points" if="$(arg prepare_for_parameter_estimation)" />
 
     <arg name="use_channel" default="1"/>
     <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "max_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
-    <arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "max_range": 7.88972, "min_range": -0.839182, "wave_offset": 2393.75, "wave_length" : 0.187729, "wave_per" : -0.043118, "v_0": 2.65737, "v_1": 0.13157, "v_2": 0.380637, "file_name" : "int_wdac4w_poly"}'/>
-    <!-- arg name="params" default='{"type": "weighted_da", "w_dist": 0.905372, "w_angle": -0.215389}'/ -->
+    <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "max_range": 7.88972, "min_range": -0.839182, "wave_offset": 2393.75, "wave_length" : 0.187729, "wave_per" : -0.043118, "v_0": 2.65737, "v_1": 0.13157, "v_2": 0.380637, "file_name" : "int_wdac4w_poly"}'/-->
+    <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "max_range": 7.88972, "min_range": -0.839182, "wave_offset": 0., "wave_length" : 1., "wave_per" : 1., "v_0": 0., "v_1": 0., "v_2": 0., "file_name" : "int_wdac4w_poly"}'/-->
+    <!--arg name="params" default='{"type": "weighted_da", "w_dist": 0.905372, "w_angle": -0.215389}'/-->
+    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 1.0, "w_angle": -1.0, "max_range": 4., "min_range": 1.0}'/-->
+    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.932321, "w_angle": -0.467848, "max_range": 4.83995, "min_range": 0.906348}'/-->
     <!-- arg name="model" default="None"/-->
-    <arg name="model" default="weighted_dac4w_poly"/>
+
+    <arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0., "w_angle": 0.0, "max_range": 4.5, "min_range": 0.5, "v_0": 1.5, "v_1": -0.5, "v_2": 0.35}'/>
+    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.9, "w_angle": -0.5, "max_range": 4.5, "min_range": 0.5, "v_0": 1.5, "v_1": -0.5, "v_2": 0.35}' /-->
+    <arg name="model" default="weighted_dac4_poly"/>
+
+    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 1.0, "w_angle": -1.0, "max_range": 4., "min_range": 1.0}' /-->
+    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.9, "w_angle": -0.5, "max_range": 4.5, "min_range": 0.5}' /-->
+    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0., "w_angle": -0.2, "max_range": 4.5, "min_range": 0.5}' /-->
+    <!--arg name="model" default="weighted_dac4"/-->
 
     <arg name="data_set" default="nc_math/" />
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />

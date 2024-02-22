@@ -890,7 +890,9 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
                 normvec->points[i].x = pabcd(0);
                 normvec->points[i].y = pabcd(1);
                 normvec->points[i].z = pabcd(2);
-                normvec->points[i].intensity = pd2;
+                normvec->points[i].intensity = pd2; // will be used for distance to plane
+                normvec->points[i].reflectance = point_body.intensity; // contains either intensity or real reflectivity
+                normvec->points[i].gloss = pabcd(3); // store D of plane
                 normvec->points[i].curvature = 
                 res_last[i] = abs(pd2);
             }
@@ -901,6 +903,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     // Result are two point clouds: 1st containing points in laser coor-rep, 2nd containing estimated plane normal vecs as points
     effct_feat_num = 0;
     std::vector<int> valid_pts;
+    valid_pts.reserve(feats_down_size);
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
@@ -908,8 +911,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
             corr_normvect->points[effct_feat_num] = normvec->points[i];
             total_residual += res_last[i];
-            valid_pts.push_back(i);
-            effct_feat_num ++;
+            valid_pts.emplace_back(i);
+            ++effct_feat_num;
         }
     }
     // If no valid points are found return function without changing state
@@ -924,13 +927,17 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     match_time  += omp_get_wtime() - match_start;
     double solve_start_  = omp_get_wtime();
 
-    /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
+    /*** Computation of Measurment Jacobian matrix H and measurents vector ***/
     size_t num_residuals = effct_feat_num*2;
     ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
     ekfom_data.h.resize(num_residuals);
 
     /** Create one error point for point_to_plane and one error point for intensity gradient point */
-    for (int i = 0; i < effct_feat_num; i++)
+#ifdef MP_EN
+    omp_set_num_threads(MP_PROC_NUM);
+    #pragma omp parallel for
+#endif
+    for (int i = 0; i < effct_feat_num; ++i)
     {
         const int res_it = 2*i;
         /// Use point in laser coords
@@ -941,21 +948,20 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
         V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I; // Transform current point: laser -> imu
         M3D point_crossmat;
-        point_crossmat<<SKEW_SYM_MATRX(point_this); // Skew sym matrix for imu coord point
+        point_crossmat<<SKEW_SYM_MATRX(point_this); // Skew sym matrix for imu coord point == [p_imu]_x ( deriv of rotation )
 
         /*** get the normal vector of closest surface/corner ***/
         const PointType &norm_p = corr_normvect->points[i];
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
         /*** calculate the Measuremnt Jacobian matrix H ***/
-        //std::cout << "Add ptoplane grad" << std::endl;
-        V3D C(s.rot.conjugate() *norm_vec); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
-        V3D A(point_crossmat * C); // scale laser point skewsymmat by rotated norm vec
+        V3D C(s.rot.conjugate() * norm_vec); // Conjugates quaternion s.rot -> rotate world frame norm vec to imu frame
+        V3D A(point_crossmat * C);
         // If Extrinsic laser -> IMU should be estimated
         if (extrinsic_est_en)
         {
             V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
-            ekfom_data.h_x.block<1, 12>(res_it,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+            ekfom_data.h_x.template block<1, 12>(res_it,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
         }
         // If Extrinsic sufficiently known
         else
@@ -963,75 +969,84 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             /// h_x is mat elem R^(num_pts x measurement DOFs)
             // measurement dofs = world->body rot +trans => 6-dims + body->IMU rot+trans => 6-dims => 12-dims
             // to h_x<1,6>(i,0) holds estimated difference point[i] measured pos -> point[i] esti pos
-            // 1-3 contains translation error
-            // 4-6 contains rotation error
-            ekfom_data.h_x.block<1, 12>(res_it,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            // 1-3 contains translation component
+            // 4-6 contains rotation component
+            ekfom_data.h_x.template block<1, 12>(res_it,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+
+            //     n_w', ([p_i]_x * R_wi' * n_w)'      // since VEC_FROM_ARRAY inherently is a transpose
+            // <=> n_w', n_w' * (R_wi')' * [p_i]_x' =  // [p_i]_x' = -[p_i]_x
+            // <=> n_w', n_w' * R_wi * [-p_i]_x
+            // <=> n_w' * ( I, R_wi * [-p_i]_x ) <= all in world now
         }
 
         /*** Measuremnt: distance to the closest surface/corner ***/
         // Sum of all errors/resiudals
         ekfom_data.h(res_it) = -norm_p.intensity;
-        //std::cout << -norm_p.intensity << " -> " << norm_p.x << ", " << norm_p.y << ", " << norm_p.z << std::endl;
 
         /** Add Intensity gradient to kalman state. */
-        //std::cout << "Add intensity grad" << std::endl;
-        int pt_it = valid_pts[i];
-        PointType &point_world = feats_down_world->points[pt_it];
-        PointVector& points_near = Nearest_Points[pt_it];
-        if( point_world.reflectance > 0.0 )
+        const int & pt_it = valid_pts[i];
+        const PointType &point_world = feats_down_world->points[pt_it];
+        const PointVector& points_near = Nearest_Points[pt_it];
+        if ( point_world.reflectance > 0.0 && ref_grad_w >= 0. )
         {
             // get reflectance gradient to surface
-            Eigen::Vector3d plane_normal( norm_vec );
-            //std::cout << "Got normal=" << norm_vec << std::endl;
-            Eigen::Vector3d ref_grad;
-            double int_error = reflectance::IrregularGrid::call( point_world, points_near, plane_normal, ref_grad );
-            //double grad_weight = ref_grad_w/point_world.reflectance;
-            //double grad_length = ref_grad.norm();
-            /*if( grad_length > 0.0 )
-            {
-                ref_grad /= grad_length;
-            //std::cout << grad_length << ", ";
-            }*/
+            V3D ref_grad; // should be in world frame
+            double int_error = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, norm_p, ref_grad );
+            // weight them
+            ref_grad *= ref_grad_w;
+            int_error *= ref_grad_w;
+
+            // all points in world, normal too.
+            // ref_g' * ( I, R_wi * [-p_i]_x )
 
             // Transform intensity grad: World -> IMU coords
-            //std::cout << "Transform intensity grad" << std::endl;
-            Eigen::Vector3d C_ref(s.rot.conjugate() *ref_grad); // Conjugates quaternion s.rot -> rotate world frame norm vec to laser/body frame
-            Eigen::Vector3d A_ref(point_crossmat * C_ref *ref_grad_w); // scale laser point skewsymmat by rotated norm vec
+            V3D C_ref(s.rot.conjugate() * ref_grad); // Conjugates quaternion s.rot -> rotate world frame grad vec to imu frame
+            V3D A_ref(point_crossmat * C_ref);
+
 
             /** Add vector to state. */
-            //std::cout << "Add to state" << std::endl;
-            ekfom_data.h_x.block<1, 12>(res_it+1,0) << ref_grad[0]*ref_grad_w, ref_grad[1]*ref_grad_w, ref_grad[2]*ref_grad_w,
-                                                    VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            ekfom_data.h(res_it+1) = -int_error *ref_grad_w;
+            ekfom_data.h_x.template block<1, 12>(res_it+1,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            ekfom_data.h(res_it+1) = -int_error;
 
-            //std::cout << ref_grad.norm() *ref_grad_w << " -> " << int_error *ref_grad_w <<std::endl;
-            //std::cout << grad_length << " -> " << ref_grad << std::endl;
-            //ekfom_data.h_x.block<1, 12>(res_it+1,0) << 0.0,0.0,0.0,0.0,0.0,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            //ekfom_data.h(res_it+1) = 0;
+            constexpr bool print_info = true;
+            if constexpr ( print_info )
+            {
+                if ( (res_it & 1023) == 0 )
+                {
+                    ROS_INFO_STREAM("ri: " << res_it << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h(res_it+1) << "\n"
+                                    << (ekfom_data.h_x.template block<2, 6>(res_it,0)) );
+                }
+            }
+        } else {
+            ekfom_data.h_x.template block<1, 12>(res_it+1,0).setZero();
+            ekfom_data.h(res_it+1) = 0.;
         }
     }
 
-    double grad_mean = 0.0, grad_var = 0.0;
-    double int_mean = 0.0, int_var = 0.0;
-    size_t res_it = 0;
-    for (int i = 0; i < effct_feat_num; i++)
+    if constexpr ( false )
     {
-        grad_mean += ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm();
-        int_mean += ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm();
-        res_it += 2;
+        double grad_mean = 0.0, grad_var = 0.0;
+        double int_mean = 0.0, int_var = 0.0;
+        size_t res_it = 0;
+        for (int i = 0; i < effct_feat_num; i++)
+        {
+            grad_mean += ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm();
+            int_mean += ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm();
+            res_it += 2;
+        }
+        grad_mean /= effct_feat_num;
+        int_mean /= (effct_feat_num*ref_grad_w);
+        res_it = 0;
+        for (int i = 0; i < effct_feat_num; i++)
+        {
+            grad_var += std::pow(grad_mean -ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm(), 2);
+            int_var += std::pow(int_mean -ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm(), 2);
+            res_it += 2;
+        }
+        grad_var /= effct_feat_num;
+        int_var /= effct_feat_num;
+        (*grad_file) << grad_mean << ", " << grad_var << ", " << int_mean << ", " << int_var << "\n";
     }
-    grad_mean /= effct_feat_num;
-    int_mean /= (effct_feat_num*ref_grad_w);
-    res_it = 0;
-    for (int i = 0; i < effct_feat_num; i++)
-    {
-        grad_var += std::pow(grad_mean -ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm(), 2);
-        int_var += std::pow(int_mean -ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm(), 2);
-        res_it += 2;
-    }
-    grad_var /= effct_feat_num;
-    int_var /= effct_feat_num;
-    (*grad_file) << grad_mean << ", " << grad_var << ", " << int_mean << ", " << int_var << "\n";
 
     solve_time += omp_get_wtime() - solve_start_;
 }
@@ -1104,7 +1119,8 @@ int main(int argc, char** argv)
     grad_file = std::make_shared<std::ofstream>(grad_out_fname);
     //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
-    ref_grad_w = std::sqrt( ref_grad_w );
+    if ( ref_grad_w > 0. )
+        ref_grad_w = std::sqrt( ref_grad_w );
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
     ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
@@ -1352,9 +1368,9 @@ int main(int argc, char** argv)
 
             double t_update_end = omp_get_wtime();
 
-            static Eigen::Vector3d last_pos = Eigen::Vector3d(state_point.pos[0]-2.,state_point.pos[1]-2.,state_point.pos[2]-2.); // take first one too
             if ( store_compensated_ )
             {
+                static Eigen::Vector3d last_pos = Eigen::Vector3d(state_point.pos[0]-2.,state_point.pos[1]-2.,state_point.pos[2]-2.); // take first one too
                 dist_passed = (last_pos - state_point.pos).norm() > 1;
                 if ( dist_passed )
                 {
