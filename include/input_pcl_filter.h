@@ -9,7 +9,7 @@
 
 #ifdef COMP_ONLY
 #include "intensity_compensation.h"
-#include "pc_intensity_correction.h"
+#include "pc_intensity_computation.h"
 #endif
 
 enum PclFilterChannel
