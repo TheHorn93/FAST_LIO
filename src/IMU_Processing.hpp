@@ -228,10 +228,14 @@ void ImuProcess::UndistortRawPcl(const typename Cloud::Ptr &meas_lidar, const es
   /*** sort point clouds by offset time ***/
   Cloud & pcl_out = *cl_out;
   pcl_out = *(meas_lidar);
+  std::vector<size_t> indices(pcl_out.points.size());
+  std::iota(indices.begin(), indices.end(), 0);
+
+  const auto & pts = pcl_out.points;
   if constexpr ( std::is_same_v<Cloud,PointCloudXYZI> )
-    sort(pcl_out.points.begin(), pcl_out.points.end(), time_list);
+    sort(indices.begin(), indices.end(), [&pts](const size_t i0, const size_t i1){return pts[i0].curvature < pts[i1].curvature;});
   else
-    sort(pcl_out.points.begin(), pcl_out.points.end(), time_list_ouster);
+    sort(indices.begin(), indices.end(), [&pts](const size_t i0, const size_t i1){return pts[i0].t < pts[i1].t;});
   //cout << "sorted." << endl;
   // cout<<"[ IMU Process ]: Process lidar from "<<pcl_beg_time<<" to "<<pcl_end_time<<", " \
   //          <<meas.imu.size()<<" imu msgs from "<<imu_beg_time<<" to "<<imu_end_time<<endl;
@@ -244,14 +248,13 @@ void ImuProcess::UndistortRawPcl(const typename Cloud::Ptr &meas_lidar, const es
 
   double dt = 0;
   /*** undistort each lidar point (backward propagation) ***/
-  if (pcl_out.points.begin() == pcl_out.points.end()) return;
+  if (indices.begin() == indices.end()) return;
   //cout << "iterate now." << endl;
-  auto it_pcl = pcl_out.points.end() - 1;
+  auto it_pcl = indices.end() - 1;
   for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--)
   {
     auto head = it_kp - 1;
     auto tail = it_kp;
-
 
 //  auto it_pcl = pcl_out.points.rbegin();
 //  for (auto it_kp = IMUpose.rbegin(); it_kp != IMUpose.rend(); ++it_kp)
@@ -267,10 +270,10 @@ void ImuProcess::UndistortRawPcl(const typename Cloud::Ptr &meas_lidar, const es
     angvel_avr<<VEC_FROM_ARRAY(tail->gyr);
 
 
-    for(; getTime(*it_pcl,time_unit_scale) / double(1000) > head->offset_time; it_pcl --)
+    for(; getTime(pcl_out.points[*it_pcl],time_unit_scale) / double(1000) > head->offset_time; --it_pcl)
     //for(; it_pcl->curvature / double(1000) > head->offset_time; ++it_pcl)
     {
-      dt = getTime(*it_pcl,time_unit_scale) / double(1000) - head->offset_time;
+      dt = getTime(pcl_out.points[*it_pcl],time_unit_scale) / double(1000) - head->offset_time;
 
       /* Transform to the 'end' frame, using only the rotation
        * Note: Compensation direction is INVERSE of Frame's moving direction
@@ -278,17 +281,18 @@ void ImuProcess::UndistortRawPcl(const typename Cloud::Ptr &meas_lidar, const es
        * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is represented in global frame */
       M3D R_i(R_imu * Exp(angvel_avr, dt));
 
-      V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
-      V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
-      V3D P_compensate = imu_state.offset_R_L_I.conjugate() * (imu_state.rot.conjugate() * (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) + T_ei) - imu_state.offset_T_L_I);// not accurate!
+      V3D P_i(pcl_out.points[*it_pcl].x, pcl_out.points[*it_pcl].y, pcl_out.points[*it_pcl].z);
+      if ( P_i.squaredNorm() > 0.1 )
+      {
+          V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
+          V3D P_compensate = imu_state.offset_R_L_I.conjugate() * (imu_state.rot.conjugate() * (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) + T_ei) - imu_state.offset_T_L_I);// not accurate!
 
-      // save Undistorted points and their rotation
-      it_pcl->x = P_compensate(0);
-      it_pcl->y = P_compensate(1);
-      it_pcl->z = P_compensate(2);
-
-      //if (it_pcl == pcl_out.points.rend()) break;
-      if (it_pcl == pcl_out.points.begin()) break;
+          // save Undistorted points and their rotation
+          pcl_out.points[*it_pcl].x = P_compensate(0);
+          pcl_out.points[*it_pcl].y = P_compensate(1);
+          pcl_out.points[*it_pcl].z = P_compensate(2);
+      }
+      if (it_pcl == indices.begin()) break;
     }
   }
   //cout << "out done!." << endl;

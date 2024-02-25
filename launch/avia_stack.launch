@@ -1,0 +1,44 @@
+<launch>
+<!-- Launch file for ouster OS0-128 LiDAR -->
+
+    <rosparam command="load" file="$(find fast_lio)/config/tiers_avia.yaml" />
+
+    <arg name="dont_load_params" value="true" /> <!-- loaded above already... -->
+    <arg name="prepare_for_parameter_estimation" default="true" />
+    <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
+
+    <arg name="num_filter_points" default="4"/>
+    <arg name="size_surf" default="0.5"/>
+    <arg name="size_map" default="0.5"/>
+    <arg name="requires_os_shift" default="false"/>
+
+    <param name="common/comp_lid_topic" type="string" value="/avia/livox/lidar" if="$(arg prepare_for_parameter_estimation)" />
+
+    <arg name="use_channel" default="1"/>
+    <arg name="model" default="None"/>
+    <arg name="params" default='{"type": "None"}'/>
+
+    <arg name="data_set" default="nc_math/" />
+    <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
+    <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
+    
+    <arg name="grad_w" default="0.0" if="$(arg prepare_for_parameter_estimation)" />
+    <arg name="grad_w" default="0.1" unless="$(arg prepare_for_parameter_estimation)" />
+
+    <param name="ref_grad_w" type="double" value="$(arg grad_w)" />
+    <param name="filter_size_surf" type="double" value="$(arg size_surf)" />
+    <param name="filter_size_map" type="double" value="$(arg size_map)" />
+    <param name="point_filter_num" type="int" value="$(arg num_filter_points)"/>
+    <param name="filter_use_channel" type="int" value="$(arg use_channel)"/>
+    <param name="comp_model" type="string" value="$(arg model)"/>
+    <param name="comp_params" type="string" value="$(arg params)"/>
+    <param name="requires_os_shift" type="bool" value="$(arg requires_os_shift)"/>
+    <param name="w_filter_size" type="int" value="2"/>
+    <param name="h_filter_size" type="int" value="2"/>
+
+    <include file="$(find fast_lio)/launch/tiers_livox_avia.launch">
+        <arg name="dont_load_params" value="$(arg dont_load_params)"/>
+        <arg name="prepare_for_parameter_estimation" value="$(arg prepare_for_parameter_estimation)"/>
+        <arg name="store_compensated" value="$(arg store_compensated)"/>
+    </include>
+</launch>

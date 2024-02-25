@@ -98,7 +98,7 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   //pl_corn.clear();
   pl_full.clear();
   double t1 = omp_get_wtime();
-  int plsize = msg->point_num;
+  const int plsize = msg->point_num;
   // cout<<"plsie: "<<plsize<<endl;
 
   //pl_corn.reserve(plsize);
@@ -162,6 +162,28 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
 //    printf("Feature extraction time: %lf \n", time / count);
 //  }
 //  else
+  if ( pass_through )
+  {
+      pl_surf.resize(plsize);
+      for (int i = 0; i < plsize; ++i)
+      {
+        if(!((msg->points[i].line < N_SCANS) && ((msg->points[i].tag & 0x30) == 0x10 || (msg->points[i].tag & 0x30) == 0x00)))
+        {
+            continue;
+        }
+        PointType & added_pt = pl_surf[i];
+        added_pt.x = msg->points[i].x;
+        added_pt.y = msg->points[i].y;
+        added_pt.z = msg->points[i].z;
+        added_pt.intensity = msg->points[i].reflectivity;
+        added_pt.reflectance = msg->points[i].reflectivity; // intensity
+        added_pt.normal_x = 0;
+        added_pt.normal_y = 0;
+        added_pt.normal_z = 0;
+        added_pt.curvature = msg->points[i].offset_time / float(1000000); // use curvature as time of each laser points, curvature unit: ms
+      }
+  }
+  else
   {
     for(uint i=1; i<plsize; i++)
     {
@@ -174,8 +196,11 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
           pl_full[i].y = msg->points[i].y;
           pl_full[i].z = msg->points[i].z;
           pl_full[i].intensity = msg->points[i].reflectivity;
+          pl_full[i].reflectance = msg->points[i].reflectivity;
           pl_full[i].curvature = msg->points[i].offset_time / float(1000000); // use curvature as time of each laser points, curvature unit: ms
-
+          pl_full[i].normal_x = 0;
+          pl_full[i].normal_y = 0;
+          pl_full[i].normal_z = 0;
           if((abs(pl_full[i].x - pl_full[i-1].x) > 1e-7)
               || (abs(pl_full[i].y - pl_full[i-1].y) > 1e-7)
               || (abs(pl_full[i].z - pl_full[i-1].z) > 1e-7)
