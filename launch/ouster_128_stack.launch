@@ -28,6 +28,11 @@
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.073483, "w_angle": -0.238107, "delta_range": 4.86105, "min_range": 0.124723, "v_0": 0.786091, "v_1": 0.426115, "v_2": 0.151636, "num_rings": 128}'/-->
     <arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.058032, "w_angle": -0.239848, "delta_range": 4.5241, "min_range": 0.313185, "v_0": 0.884997, "v_1": 1.22126, "v_2": 0.447523, "num_rings": 128}'/>
 
+    <!-- log variants with normals estimated per cloud -->
+    <!-- arg params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.0450446, "w_angle": -0.414042, "delta_range": 4.51833, "min_range": 0.196707, "v_0": 1.16965, "v_1": 0.84327, "v_2": -0.128998, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
+    <!-- arg params" default='{"type": "weighted_dac4_poly", "w_dist": 0.0270543, "w_angle": -0.296347, "delta_range": 5.29055, "min_range": 0.00257228, "v_0": 1.38164, "v_1": 0.246453, "v_2": 0.661007, "num_rings": 128}'--> <!-- 50s quad easy ... normals ordered -->
+    <arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.937094, "w_angle": -0.411972, "delta_range": 4.58069, "min_range": 0.168708, "v_0": 0.742844, "v_1": 1.82927, "v_2": -0.675723, "num_rings": 128}'/> <!-- 50s math easy ... normals ordered -->
+    <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.03828, "w_angle": -0.289873, "delta_range": 5.35657, "min_range": 0, "v_0": 1.40417, "v_1": 0.110958, "v_2": 0.776304, "num_rings": 128}'/--> <!-- 50s quad easy normals ordered -->
 
     <!-- old variant -->
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.562264, "w_angle": -0.0853744, "delta_range": 0.100414, "min_range": 3, "v_0": 4.11232, "v_1": 4.26689, "v_2": 5, "num_rings": 128}'/-->
