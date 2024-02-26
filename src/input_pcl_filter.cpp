@@ -4,11 +4,11 @@
 #include <configuru.hpp>
 
 #include "input_pcl_filter.h"
-//#include "lidar_intensity_correction/load_files.h"
 #include "ConfiguruLoader.h"
 #ifndef COMP_ONLY
 #include "load_files.h"
 #endif
+//#include "ros/ros.h"
 
 template<class _Tp, class _ITp>
 struct TypeIsEqual
@@ -74,7 +74,6 @@ struct PointIntensity<ouster_ros::Point, PclFilterChannel::PCLFILTER_AMBIENCE>
 };
 
 
-
 template<class _PtTp, PclFilterChannel _data_channel>
 float getIntensity( const typename PCLFilter<_PtTp, _data_channel>::PointCloudTp& pc_in, size_t pt_it )
 {
@@ -118,9 +117,8 @@ void PCLFilterBase::initCompensationModel( const std::string& type, const std::s
 }
 
 
-
 template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, std::vector<float>& ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals ) const
+void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals ) const
 {
   constexpr bool print_info = false;
 
@@ -153,7 +151,7 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, st
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& pc_in, std::vector<float>& ints_out ) const
+void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& pc_in, Eigen::VectorXf & ints_out ) const
 {
   //pc_out = PointCloudTp();
   const PointCloud<ScalarType>& pc = pc_in.getPCs()[0];
@@ -187,8 +185,7 @@ void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& 
   //std::cout << pc_out.points.size() << "/" << pc.numPoints() << " inserted" << std::endl;
 }
 
-
-
+#ifdef DISABLED_STUFF
 template<class _PtTp, PclFilterChannel _data_channel>
 bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc_in, std::vector<float>& new_int, size_t h_it, size_t w_it ) const
 {
@@ -269,10 +266,10 @@ bool PCLFilter<_PtTp, _data_channel>::filterOutlierPoint( const PointCloudTp& pc
   }
   return false;
 }
-
+#endif
 
 template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
+void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc_in, Eigen::VectorXf & new_int ) const
 {
     constexpr bool print_info = false;
     [[maybe_unused]]  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
@@ -386,7 +383,7 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
      << " dt: " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() );
 }
 
-
+#ifdef DISABLED_STUFF
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::filterOutlier( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
 {
@@ -403,30 +400,30 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlier( const PointCloudTp& pc_in, 
   }
   ROS_INFO_STREAM( "Fo: Filtered Points: " << ct_int_rep << "/" << pc_in.size() );
 }
+#endif
 
 template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::normalizeIntensity( const PointCloudTp& pc_in, std::vector<float>& new_int ) const
+void PCLFilter<_PtTp, _data_channel>::normalizeIntensity( const PointCloudTp& pc_in, Eigen::VectorXf & new_int ) const
 {
   constexpr bool print_info = false;
-  size_t num_pts = pc_in.size();
-  new_int = std::vector<float>( pc_in.size(), 0.f );
+  const size_t num_pts = pc_in.size();
+  new_int = Eigen::VectorXf::Zero(num_pts,1);
   [[maybe_unused]] float new_max_val = 0, new_min_val = 1e5;
   static constexpr float inv_max_val = 1.f/PointIntensity<_PtTp, _data_channel>::max_val;
   for( size_t pt_it=0 ; pt_it < num_pts; ++pt_it )
   {
     if ( !isValidPoint( pc_in[pt_it] ) || pc_in[pt_it].getVector3fMap().squaredNorm() < 0.1f )
         continue; // already set to 0.
-    float cur_int = getIntensity<_PtTp, _data_channel>( pc_in, pt_it );
-    new_int[pt_it] = cur_int * inv_max_val;
+    const float cur_int = getIntensity<_PtTp, _data_channel>( pc_in, pt_it );
+    new_int[pt_it] = cur_int;
     if constexpr ( print_info ) if ( new_max_val < cur_int ) new_max_val = cur_int;
     if constexpr ( print_info ) if ( new_min_val > cur_int ) new_min_val = cur_int;
     //new_int[pt_it] = float(cur_int) / float(PointIntensity<_PtTp, _data_channel>::max_val);
   }
+  new_int *= inv_max_val;
   if constexpr ( print_info )
   ROS_INFO_STREAM("" << (PointIntensity<_PtTp, _data_channel>::max_val)<< " " << inv_max_val  << " actual_max_val: " << new_max_val << " " << new_min_val);
 }
-
-
 
 
 template class PCLFilter<ouster_ros::Point, PclFilterChannel::PCLFILTER_AMBIENCE>;

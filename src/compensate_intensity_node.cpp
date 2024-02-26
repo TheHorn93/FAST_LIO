@@ -52,7 +52,7 @@ ouster_ros::Point getInvalidPoint ( )
     return invalid_point;
 }
 
-void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, PointCloudType& pc_out )
+void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointCloudType& pc_out )
 {
     //std::vector<uint32_t> idxs;
     //getValidPointsIdxs( pc_in, idxs );
@@ -61,7 +61,7 @@ void transferPoints( PointCloudType& pc_in, const std::vector<float>& ints, Poin
     pc_out.points.resize( num_pts, getInvalidPoint() );
     float maxVal = 0, maxRefl = 0;
     // TODO possible parallel
-    const ouster_ros::Point inv_pt = getInvalidPoint();
+    //const ouster_ros::Point inv_pt = getInvalidPoint();
     for( size_t pt_it=0; pt_it < num_pts; ++pt_it )
     {
         float cur_int = ints[pt_it];
@@ -118,7 +118,7 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     const bool should_publish_normals = pub_normals.getNumSubscribers() > 0;
     Eigen::Matrix3Xf normals;
     Eigen::Matrix3Xf * normals_ptr = should_publish_normals ? & normals : nullptr;
-    std::vector<float> new_ints;
+    Eigen::VectorXf new_ints;
     input_filter->applyFilter( pc_in, new_ints, normals_ptr );
     PointCloudType pc_out;
     transferPoints( pc_in, new_ints, pc_out );
