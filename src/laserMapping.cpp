@@ -107,10 +107,13 @@ vector<double>       extrinR(9, 0.0);
 deque<int64_t>                    time_buffer_ns;
 deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
-deque<PointCloudOuster::Ptr>      lidar_buffer_raw;
+deque<PointCloudOuster::Ptr>      lidar_buffer_raw_os;
+deque<PointCloudHesai::Ptr>       lidar_buffer_raw_hs;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
-PointCloudOuster::Ptr meas_lidar_raw = nullptr;
-PointCloudOuster::Ptr meas_lidar_comp = nullptr;
+PointCloudOuster::Ptr meas_lidar_raw_os = nullptr;
+PointCloudOuster::Ptr meas_lidar_comp_os = nullptr;
+PointCloudHesai::Ptr meas_lidar_raw_hs = nullptr;
+PointCloudHesai::Ptr meas_lidar_comp_hs = nullptr;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -304,7 +307,8 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
-        lidar_buffer_raw.clear();
+        lidar_buffer_raw_os.clear();
+        lidar_buffer_raw_hs.clear();
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
@@ -312,9 +316,18 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     lidar_buffer.push_back(ptr);
     if ( store_compensated_ && p_pre_raw )
     {
-        PointCloudOuster::Ptr ptr_raw(new PointCloudOuster());
-        p_pre_raw->process<PointCloudOuster>(msg, ptr_raw);
-        lidar_buffer_raw.push_back(ptr_raw);
+        if  ( p_pre->lidar_type == OUST64 )
+        {
+            PointCloudOuster::Ptr ptr_raw(new PointCloudOuster());
+            p_pre_raw->process<PointCloudOuster>(msg, ptr_raw);
+            lidar_buffer_raw_os.push_back(ptr_raw);
+        }
+        if ( p_pre->lidar_type == HESAI32 )
+        {
+            PointCloudHesai::Ptr ptr_raw(new PointCloudHesai());
+            p_pre_raw->process<PointCloudHesai>(msg, ptr_raw);
+            lidar_buffer_raw_hs.push_back(ptr_raw);
+        }
     }
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
     time_buffer.push_back(msg->header.stamp.toSec());
@@ -442,16 +455,19 @@ bool sync_packages(MeasureGroup &meas)
             }
         }
 
-        if ( ! lidar_buffer_raw.empty() )
+        meas_lidar_raw_hs = nullptr;
+        if ( ! lidar_buffer_raw_hs.empty() )
         {
-            meas_lidar_raw = lidar_buffer_raw.front();
-            meas_lidar_comp = nullptr;
+            meas_lidar_raw_hs = lidar_buffer_raw_hs.front();
         }
-        else
+        meas_lidar_comp_hs = nullptr;
+
+        meas_lidar_raw_os = nullptr;
+        if ( ! lidar_buffer_raw_os.empty() )
         {
-            meas_lidar_raw = nullptr;
-            meas_lidar_comp = nullptr;
+            meas_lidar_raw_os = lidar_buffer_raw_os.front();
         }
+        meas_lidar_comp_os = nullptr;
 
         meas.lidar_beg_time = lidar_beg_time;
         meas.lidar_end_time = lidar_end_time;
@@ -476,7 +492,8 @@ bool sync_packages(MeasureGroup &meas)
     }
 
     lidar_buffer.pop_front();
-    if ( ! lidar_buffer_raw.empty() ) lidar_buffer_raw.pop_front();
+    if ( ! lidar_buffer_raw_os.empty() ) lidar_buffer_raw_os.pop_front();
+    if ( ! lidar_buffer_raw_hs.empty() ) lidar_buffer_raw_hs.pop_front();
     time_buffer_ns.pop_front();
     time_buffer.pop_front();
     lidar_pushed = false;
@@ -533,6 +550,63 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 #include <rosbag/bag.h>
+template <typename PointCloudT, bool toWorld>
+void store_compensated_cloud ( typename PointCloudT::Ptr cloud, const uint64_t & prev_pcd_end_time  )
+{
+    const size_t size = cloud->points.size();
+    typename PointCloudT::Ptr laserCloudWorld;
+    if constexpr ( toWorld )
+    {
+        laserCloudWorld = typename PointCloudT::Ptr( new PointCloudT(size, 1));
+        for (int i = 0; i < size; ++i)
+        {
+            RGBpointBodyToWorld( &cloud->points[i], &laserCloudWorld->points[i]);
+        }
+    }
+    else
+    {
+        laserCloudWorld = cloud;
+
+//                for ( int i = 0; i < size; i+=100 )
+//                    std::cout << "A["<<i<<"]: " << laserCloudWorld->points[i].x << " "
+//                              << laserCloudWorld->points[i].y << " "
+//                              << laserCloudWorld->points[i].z << " "
+//                              << laserCloudWorld->points[i].intensity << " "
+//                              << laserCloudWorld->points[i].t << " "
+//                              << int(laserCloudWorld->points[i].reflectivity) << " "
+//                              << int(laserCloudWorld->points[i].ring) << " "
+//                              << int(laserCloudWorld->points[i].ambient) << " "
+//                              << int(laserCloudWorld->points[i].range) << " "<< std::endl;
+    }
+
+    //for ( int i = 0; i < size; ++i)
+    //    laserCloudWorld->points[i].intensity *= 65535; // Stupid HACK, due to scaling before hand...
+
+    constexpr bool store_to_bag = true;
+    if constexpr ( store_to_bag )
+    {
+        const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/stored.bag"));
+        static std::shared_ptr<rosbag::Bag> bagFile = nullptr;
+        if ( ! bagFile )
+            bagFile = std::make_shared<rosbag::Bag>( all_points_dir, rosbag::bagmode::Write );
+
+        sensor_msgs::PointCloud2 laserCloudmsg;
+        pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
+        laserCloudmsg.header.stamp = ros::Time().fromNSec(lidar_ts_ns);
+        laserCloudmsg.header.frame_id = "camera_init";
+        bagFile->write("/os_cloud/comp", laserCloudmsg.header.stamp,laserCloudmsg);
+        cout << "current scan saved to PCD_COMP: " << all_points_dir << " " << to_string(prev_pcd_end_time) << endl;
+    }
+    else
+    {
+        const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/") + to_string(prev_pcd_end_time) + string(".pcd"));
+        pcl::PCDWriter pcd_writer;
+        cout << "current scan saved to PCD_COMP: " << all_points_dir << " "<< endl;
+        pcd_writer.writeBinary(all_points_dir, *laserCloudWorld);
+    }
+}
+
+
 bool dist_passed = false;
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
 PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
@@ -615,70 +689,26 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         }
     }
 
-    if ( dist_passed && store_compensated_ && meas_lidar_comp )
+    if ( dist_passed && store_compensated_ && (meas_lidar_comp_os || meas_lidar_comp_hs) )
     {
         static int scan_wait_num = 0;
         static uint64_t prev_pcd_end_time = first_lidar_time * 1e9;
         scan_wait_num ++;
 
         constexpr bool use_full = true;
-        PointCloudOuster::Ptr cloud = meas_lidar_comp; //( use_full ? meas_lidar_comp : feats_undistort );
+        constexpr bool toWorld = false;
 
-        const int size = cloud->points.size();
+        //PointCloudOuster::Ptr cloud = meas_lidar_comp; //( use_full ? meas_lidar_comp : feats_undistort );
+
+        const int size = meas_lidar_comp_os ? meas_lidar_comp_os->points.size() :
+                                              ( meas_lidar_comp_hs ? meas_lidar_comp_hs->points.size() : 0 );
         if ( //scan_wait_num >= pcd_save_interval &&
              size > 0 )
         {
-            PointCloudOuster::Ptr laserCloudWorld;
-            constexpr bool toWorld = false;
-            if constexpr ( toWorld )
-            {
-                laserCloudWorld = PointCloudOuster::Ptr( new PointCloudOuster(size, 1));
-                for (int i = 0; i < size; ++i)
-                {
-                    RGBpointBodyToWorld( &cloud->points[i], &laserCloudWorld->points[i]);
-                }
-            }
-            else
-            {
-                laserCloudWorld = cloud;
-
-//                for ( int i = 0; i < size; i+=100 )
-//                    std::cout << "A["<<i<<"]: " << laserCloudWorld->points[i].x << " "
-//                              << laserCloudWorld->points[i].y << " "
-//                              << laserCloudWorld->points[i].z << " "
-//                              << laserCloudWorld->points[i].intensity << " "
-//                              << laserCloudWorld->points[i].t << " "
-//                              << int(laserCloudWorld->points[i].reflectivity) << " "
-//                              << int(laserCloudWorld->points[i].ring) << " "
-//                              << int(laserCloudWorld->points[i].ambient) << " "
-//                              << int(laserCloudWorld->points[i].range) << " "<< std::endl;
-            }
-
-            //for ( int i = 0; i < size; ++i)
-            //    laserCloudWorld->points[i].intensity *= 65535; // Stupid HACK, due to scaling before hand...
-
-            constexpr bool store_to_bag = true;
-            if constexpr ( store_to_bag )
-            {
-                const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/stored.bag"));
-                static std::shared_ptr<rosbag::Bag> bagFile = nullptr;
-                if ( ! bagFile )
-                    bagFile = std::make_shared<rosbag::Bag>( all_points_dir, rosbag::bagmode::Write );
-
-                sensor_msgs::PointCloud2 laserCloudmsg;
-                pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-                laserCloudmsg.header.stamp = ros::Time().fromNSec(lidar_ts_ns);
-                laserCloudmsg.header.frame_id = "camera_init";
-                bagFile->write("/os_cloud/comp", laserCloudmsg.header.stamp,laserCloudmsg);
-                cout << "current scan saved to PCD_COMP: " << all_points_dir << " " << to_string(prev_pcd_end_time) << endl;
-            }
-            else
-            {
-                const string all_points_dir(string(string(ROOT_DIR) + "/PCD_COMP/") + to_string(prev_pcd_end_time) + string(".pcd"));
-                pcl::PCDWriter pcd_writer;
-                cout << "current scan saved to PCD_COMP: " << all_points_dir << " "<< endl;
-                pcd_writer.writeBinary(all_points_dir, *laserCloudWorld);
-            }
+            if ( meas_lidar_comp_hs )
+                store_compensated_cloud<PointCloudHesai,toWorld>( meas_lidar_comp_hs, prev_pcd_end_time );
+            if ( meas_lidar_comp_os )
+                store_compensated_cloud<PointCloudOuster,toWorld>( meas_lidar_comp_os, prev_pcd_end_time );
             scan_wait_num = 0;
             prev_pcd_end_time = lidar_end_time * 1e9;
 
@@ -1265,12 +1295,20 @@ int main(int argc, char** argv)
                 continue;
             }
 
-            if ( store_compensated_ && meas_lidar_raw )
+            if ( store_compensated_ )
             {
-                meas_lidar_comp = PointCloudOuster::Ptr(new PointCloudOuster());
-                //(*meas_lidar_comp) = *meas_lidar_raw;
-                p_imu->UndistortRawPcl<PointCloudOuster>( meas_lidar_raw, kf, meas_lidar_comp );
+                if ( meas_lidar_raw_os )
+                {
+                    meas_lidar_comp_os = PointCloudOuster::Ptr(new PointCloudOuster());
+                    p_imu->UndistortRawPcl<PointCloudOuster>( meas_lidar_raw_os, kf, meas_lidar_comp_os );
+                }
+                if ( meas_lidar_raw_hs )
+                {
+                    meas_lidar_comp_hs = PointCloudHesai::Ptr(new PointCloudHesai());
+                    p_imu->UndistortRawPcl<PointCloudHesai>( meas_lidar_raw_hs, kf, meas_lidar_comp_hs );
+                }
             }
+
 
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
                             false : true;
@@ -1290,14 +1328,14 @@ int main(int argc, char** argv)
                     if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
                     if ( maxVal < feats_undistort->points[i].reflectance ) maxVal = feats_undistort->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << std::endl;
+                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << " #: " << feats_undistort->size() << std::endl;
                 maxVal = 0; maxValI = 0;
                 for (int i = 0; i < feats_down_body->size(); i++)
                 {
                     if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
                     if ( maxVal < feats_down_body->points[i].reflectance ) maxVal = feats_down_body->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << std::endl;
+                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << " #: " << feats_down_body->size() << std::endl;
                 maxVal = 0; maxValI = 0;
 
             }

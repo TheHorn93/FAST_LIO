@@ -37,6 +37,24 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
     (std::uint16_t, ring, ring)
 )
 
+namespace hesai_ros {
+  struct EIGEN_ALIGN16 Point {
+      PCL_ADD_POINT4D;
+      float intensity;
+      double timestamp;
+      std::uint16_t ring;
+      EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  };
+}  // namespace velodyne_ros
+POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::Point,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (double, timestamp, timestamp)
+    (std::uint16_t, ring, ring)
+)
+
 namespace ouster_ros {
   struct EIGEN_ALIGN16 Point {
       PCL_ADD_POINT4D;
@@ -100,6 +118,9 @@ static bool isValidPoint( const _PtTp& pt_in )
 {
   return ( !std::isnan(pt_in.x) && !std::isnan(pt_in.y) && !std::isnan(pt_in.z) );
 }
+typedef pcl::PointCloud<PointType> PointCloudXYZI;
+typedef pcl::PointCloud<ouster_ros::Point> PointCloudOuster;
+typedef pcl::PointCloud<hesai_ros::Point> PointCloudHesai;
 
 #endif // POINT_TYPE_H__
 

@@ -1,7 +1,7 @@
 <launch>
-<!-- Launch file for Livox Avia LiDAR -->
+<!-- Launch file for Livox Horizon LiDAR -->
 
-    <rosparam command="load" file="$(find fast_lio)/config/tiers_avia.yaml" />
+    <rosparam command="load" file="$(find fast_lio)/config/tiers_horizon.yaml" />
 
     <arg name="dont_load_params" value="true" /> <!-- loaded above already... -->
     <arg name="prepare_for_parameter_estimation" default="true" />
@@ -12,7 +12,7 @@
     <arg name="size_map" default="0.5"/>
     <arg name="requires_os_shift" default="false"/>
 
-    <param name="common/comp_lid_topic" type="string" value="/avia/livox/lidar" if="$(arg prepare_for_parameter_estimation)" />
+    <param name="common/comp_lid_topic" type="string" value="/horizon/livox/lidar" if="$(arg prepare_for_parameter_estimation)" />
 
     <arg name="use_channel" default="1"/>
     <arg name="model" default="None"/>
@@ -21,7 +21,7 @@
     <arg name="data_set" default="nc_math/" />
     <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
     <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
-    
+
     <arg name="grad_w" default="0.0" if="$(arg prepare_for_parameter_estimation)" />
     <arg name="grad_w" default="0.1" unless="$(arg prepare_for_parameter_estimation)" />
 
@@ -36,9 +36,10 @@
     <param name="w_filter_size" type="int" value="2"/>
     <param name="h_filter_size" type="int" value="2"/>
 
-    <include file="$(find fast_lio)/launch/tiers_livox_avia.launch">
+    <include file="$(find fast_lio)/launch/tiers_livox_horizon.launch">
         <arg name="dont_load_params" value="$(arg dont_load_params)"/>
         <arg name="prepare_for_parameter_estimation" value="$(arg prepare_for_parameter_estimation)"/>
         <arg name="store_compensated" value="$(arg store_compensated)"/>
     </include>
 </launch>
+

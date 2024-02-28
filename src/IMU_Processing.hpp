@@ -22,12 +22,14 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/Vector3.h>
+#include "point_type.h"
 #include "use-ikfom.hpp"
 
 /// *************Preconfiguration
 
 #define MAX_INI_COUNT (10)
 
+const bool time_list_hesai( const hesai_ros::Point &x, const hesai_ros::Point &y) {return (x.timestamp < y.timestamp);};
 const bool time_list_ouster( const ouster_ros::Point &x, const ouster_ros::Point &y) {return (x.t < y.t);};
 const bool time_list( const PointType &x, const PointType &y) {return (x.curvature < y.curvature);};
 
@@ -217,6 +219,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
   last_imu_ = meas.imu.back();
 }
 
+const double getTime ( const hesai_ros::Point & p, const float & time_unit_scale ) { return  p.timestamp * time_unit_scale; }
 const double getTime ( const ouster_ros::Point & p, const float & time_unit_scale ) { return  p.t * time_unit_scale; }
 const double getTime ( const PointType & p, const float & time_unit_scale ) { return  p.curvature; }
 
@@ -234,8 +237,11 @@ void ImuProcess::UndistortRawPcl(const typename Cloud::Ptr &meas_lidar, const es
   const auto & pts = pcl_out.points;
   if constexpr ( std::is_same_v<Cloud,PointCloudXYZI> )
     sort(indices.begin(), indices.end(), [&pts](const size_t i0, const size_t i1){return pts[i0].curvature < pts[i1].curvature;});
-  else
+  if constexpr ( std::is_same_v<Cloud,PointCloudOuster> )
     sort(indices.begin(), indices.end(), [&pts](const size_t i0, const size_t i1){return pts[i0].t < pts[i1].t;});
+  if constexpr ( std::is_same_v<Cloud,PointCloudHesai> )
+    sort(indices.begin(), indices.end(), [&pts](const size_t i0, const size_t i1){return pts[i0].timestamp < pts[i1].timestamp;});
+
   //cout << "sorted." << endl;
   // cout<<"[ IMU Process ]: Process lidar from "<<pcl_beg_time<<" to "<<pcl_end_time<<", " \
   //          <<meas.imu.size()<<" imu msgs from "<<imu_beg_time<<" to "<<imu_end_time<<endl;

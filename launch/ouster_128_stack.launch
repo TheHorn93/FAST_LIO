@@ -7,14 +7,15 @@
     <arg name="prepare_for_parameter_estimation" default="false" />
     <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="num_filter_points" default="4"/>
+    <arg name="num_filter_points" default="4" if="$(arg prepare_for_parameter_estimation)"/>
+    <arg name="num_filter_points" default="1" unless="$(arg prepare_for_parameter_estimation)"/>
     <arg name="size_surf" default="0.5"/>
-    <arg name="size_map" default="0.25"/>
+    <arg name="size_map" default="0.5"/>
     <arg name="requires_os_shift" default="true"/>
 
     <param name="common/comp_lid_topic" type="string" value="/os_cloud_node/points" if="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="use_channel" default="1"/>
+    <arg name="use_channel" default="0"/>
     <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "delta_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
     <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "delta_range": 7.88972, "min_range": -0.839182, "wave_offset": 2393.75, "wave_length" : 0.187729, "wave_per" : -0.043118, "v_0": 2.65737, "v_1": 0.13157, "v_2": 0.380637, "file_name" : "int_wdac4w_poly"}'/-->
     <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "delta_range": 7.88972, "min_range": -0.839182, "wave_offset": 0., "wave_length" : 1., "wave_per" : 1., "v_0": 0., "v_1": 0., "v_2": 0., "file_name" : "int_wdac4w_poly"}'/-->
@@ -26,13 +27,19 @@
     <!-- log variant -->
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.0543411, "w_angle": -0.281186, "delta_range": 5.08487, "min_range": 0, "v_0": 0.988385, "v_1": 0.319676, "v_2": 0.810306, "num_rings": 128}'/-->
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.073483, "w_angle": -0.238107, "delta_range": 4.86105, "min_range": 0.124723, "v_0": 0.786091, "v_1": 0.426115, "v_2": 0.151636, "num_rings": 128}'/-->
-    <arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.058032, "w_angle": -0.239848, "delta_range": 4.5241, "min_range": 0.313185, "v_0": 0.884997, "v_1": 1.22126, "v_2": 0.447523, "num_rings": 128}'/>
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.058032, "w_angle": -0.239848, "delta_range": 4.5241, "min_range": 0.313185, "v_0": 0.884997, "v_1": 1.22126, "v_2": 0.447523, "num_rings": 128}'/--> <!-- best? 20 -->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0343761, "w_angle": -0.303786, "delta_range": 5.29283, "min_range": 0, "v_0":1.58211, "v_1": -0.00630818, "v_2": 1.23173, "num_rings": 128}'/-->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0293451, "w_angle": -0.281567, "delta_range": 4.95863, "min_range": 0.18458, "v_0": 1.59507, "v_1": 0.203334, "v_2": 1.30205, "num_rings": 128}'/--> <!-- 50+ ... -->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0336394, "w_angle": -0.301317, "delta_range": 5.29421, "min_range": 0.0, "v_0": 1.57547, "v_1": -0.0499185, "v_2": 1.25848, "num_rings": 128}'/--> <!-- 50+ ... -->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0484826, "w_angle": -0.19438, "delta_range": 5.18418, "min_range": 0.0, "v_0": 2.20109, "v_1": 0.493896, "v_2": 1.0998, "num_rings": 128}'/--> <!-- 50+ ... normals ordered -->
 
     <!-- log variants with normals estimated per cloud -->
-    <!-- arg params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.0450446, "w_angle": -0.414042, "delta_range": 4.51833, "min_range": 0.196707, "v_0": 1.16965, "v_1": 0.84327, "v_2": -0.128998, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
-    <!-- arg params" default='{"type": "weighted_dac4_poly", "w_dist": 0.0270543, "w_angle": -0.296347, "delta_range": 5.29055, "min_range": 0.00257228, "v_0": 1.38164, "v_1": 0.246453, "v_2": 0.661007, "num_rings": 128}'--> <!-- 50s quad easy ... normals ordered -->
-    <arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.937094, "w_angle": -0.411972, "delta_range": 4.58069, "min_range": 0.168708, "v_0": 0.742844, "v_1": 1.82927, "v_2": -0.675723, "num_rings": 128}'/> <!-- 50s math easy ... normals ordered -->
-    <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.03828, "w_angle": -0.289873, "delta_range": 5.35657, "min_range": 0, "v_0": 1.40417, "v_1": 0.110958, "v_2": 0.776304, "num_rings": 128}'/--> <!-- 50s quad easy normals ordered -->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.0450446, "w_angle": -0.414042, "delta_range": 4.51833, "min_range": 0.196707, "v_0": 1.16965, "v_1": 0.84327, "v_2": -0.128998, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0270543, "w_angle": -0.296347, "delta_range": 5.29055, "min_range": 0.00257228, "v_0": 1.38164, "v_1": 0.246453, "v_2": 0.661007, "num_rings": 128}'/--> <!-- 50s quad easy ... normals ordered -->
+    <!-- arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.937094, "w_angle": -0.411972, "delta_range": 4.58069, "min_range": 0.168708, "v_0": 0.742844, "v_1": 1.82927, "v_2": -0.675723, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
+    <!-- arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.03828, "w_angle": -0.289873, "delta_range": 5.35657, "min_range": 0, "v_0": 1.40417, "v_1": 0.110958, "v_2": 0.776304, "num_rings": 128}'/--> <!-- 50s quad easy normals ordered -->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.183854, "w_angle": -0.354057, "delta_range": 3.48842, "min_range": 0.569719, "v_0": 0.328166, "v_1": 1.95006, "v_2": -0.261556, "num_rings": 128}'/--> <!-- 50s math med normals ordered -->
+    <arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.8098, "w_angle": -0.351655, "delta_range": 3.48451, "min_range": 0.575314, "v_0": 0.26031, "v_1": 2.06328, "v_2": -0.322571, "num_rings": 128}'/> <!-- 50s math med normals ordered -->
 
     <!-- old variant -->
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.562264, "w_angle": -0.0853744, "delta_range": 0.100414, "min_range": 3, "v_0": 4.11232, "v_1": 4.26689, "v_2": 5, "num_rings": 128}'/-->
@@ -82,3 +89,20 @@
         <arg name="store_compensated" value="$(arg store_compensated)"/>
     </include>
 </launch>
+
+<!--
+axis parallel
+rainbow invert.
+size 2, 0.5 alpha, 1 sec
+ref: 10k
+raw int: 0,002
+comp int: 0,0015
+
+raw: 3 pt-size
+comp: 3 pt-size
+-19.2757 -16.4341 -10.1664  0.824347  0.131079 -0.507938 0.212737  4.37958 -1.78968  1.74042 90 6.86669 6866.69
+
+kdenlive
+352, 133 1229 691, 63.98%
+131 0 188 800
+-->

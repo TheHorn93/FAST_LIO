@@ -75,6 +75,10 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename
     oust64_handler( msg);
     break;
 
+  case HESAI32:
+    hesai32_handler( msg);
+    break;
+
   case VELO16:
     velodyne_handler(msg);
     break;
@@ -84,12 +88,18 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename
     break;
   }
   if constexpr ( std::is_same_v<Cloud,PointCloudOuster> )
-    *pcl_out = pl_raw;
+    *pcl_out = pl_raw_os;
   else
-    *pcl_out = pl_surf;
+  {
+    if constexpr ( std::is_same_v<Cloud,PointCloudHesai> )
+      *pcl_out = pl_raw_hs;
+    else
+      *pcl_out = pl_surf;
+  }
 }
 
 template void Preprocess::process<PointCloudOuster>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudOuster::Ptr &pcl_out);
+template void Preprocess::process<PointCloudHesai>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudHesai::Ptr &pcl_out);
 template void Preprocess::process<PointCloudXYZI>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudXYZI::Ptr &pcl_out);
 
 void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
@@ -220,7 +230,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
   static const double max_ref = std::pow( 2, 16 )-1;
 
   //ROS_INFO_STREAM( "Ouster Handler" );
-  pl_raw.clear();
+  pl_raw_os.clear();
   pl_surf.clear();
   //pl_corn.clear();
   pl_full.clear();
@@ -230,7 +240,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
   //  float maxVal = 0, oMaxVal = 0;
   //  for (int i = 0; i < pl_orig.points.size(); i++)
   //    if ( maxVal < pl_orig.points[i].intensity ) maxVal = pl_orig.points[i].intensity;
-  pl_raw = pl_orig;
+  pl_raw_os = pl_orig;
 
   const int plsize = pl_orig.size();
   pl_surf.reserve(plsize);
@@ -297,6 +307,92 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
   // pub_func(pl_surf, pub_full, msg->header.stamp);
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
   //ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points. max: " << maxVal << " " << oMaxVal);
+}
+
+void Preprocess::hesai32_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
+{
+  //static const double max_ref = std::pow( 2, 16 )-1;
+
+  //ROS_INFO_STREAM( "Hesai Handler" );
+  pl_raw_hs.clear();
+  pl_surf.clear();
+  //pl_corn.clear();
+  pl_full.clear();
+  pcl::PointCloud<hesai_ros::Point> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+  double start_time = msg->header.stamp.toSec();
+
+  float maxVal = 0, oMaxVal = 0, ring = -1;
+  for (int i = 0; i < pl_orig.points.size(); i++)
+  {
+    if ( maxVal < pl_orig.points[i].intensity ) maxVal = pl_orig.points[i].intensity;
+    if ( ring < pl_orig.points[i].ring ) ring = pl_orig.points[i].ring;
+  }
+  pl_raw_hs = pl_orig;
+
+  const int plsize = pl_orig.size();
+  pl_surf.reserve(plsize);
+
+  if ( pass_through )
+  {
+      pl_surf.resize(plsize);
+      for (int i = 0; i < plsize; ++i)
+      {
+        PointType & added_pt = pl_surf[i];
+        added_pt.x = pl_orig.points[i].x;
+        added_pt.y = pl_orig.points[i].y;
+        added_pt.z = pl_orig.points[i].z;
+        added_pt.intensity = pl_orig.points[i].intensity;
+        added_pt.reflectance = 0; //pl_orig.points[i].reflectivity; // intensity
+        added_pt.normal_x = 0;
+        added_pt.normal_y = 0;
+        added_pt.normal_z = 0;
+        added_pt.curvature = (pl_orig.points[i].timestamp-start_time) * time_unit_scale; // curvature unit: ms
+      }
+  }
+  else
+  {
+    //double time_stamp = msg->header.stamp.toSec();
+    // cout << "===================================" << endl;
+    // printf("Pt size = %d, N_SCANS = %d\r\n", plsize, N_SCANS);
+    //float maxRefl = 0;
+    //size_t num_ref = 0;
+    for (int i = 0; i < pl_orig.points.size(); i++)
+    {
+      if (i % point_filter_num != 0) continue;
+      if ( !isValidPoint( pl_orig.points[i] ) ) continue;
+
+      double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
+
+      if (range < (blind * blind)) continue;
+
+      PointType added_pt;
+      added_pt.x = pl_orig.points[i].x;
+      added_pt.y = pl_orig.points[i].y;
+      added_pt.z = pl_orig.points[i].z;
+      //added_pt.intensity = pl_orig.points[i].intensity /max_ref;
+      added_pt.intensity = pl_orig.points[i].intensity;
+      added_pt.reflectance = 0;//pl_orig.points[i].reflectivity; // intensity
+      //if ( maxRefl < added_pt.reflectance ) maxRefl = added_pt.reflectance;
+      //added_pt.intensity = new_ints[i];
+      //added_pt.reflectance = new_ints[i];
+      //if( added_pt.intensity > 0.0 ) ++num_ref;
+      //if(i%500 == 0)
+        //std::cout << "    x=" << added_pt.x << ", y=" << added_pt.y << ", z=" << added_pt.z << ", int=" << added_pt.intensity << ", from=" << pl_orig.points[i].intensity << std::endl;
+      added_pt.normal_x = 0;
+      added_pt.normal_y = 0;
+      added_pt.normal_z = 0;
+      added_pt.curvature = (pl_orig.points[i].timestamp-start_time) * time_unit_scale; // curvature unit: ms
+
+      if ( oMaxVal < added_pt.intensity ) oMaxVal = added_pt.intensity;
+      pl_surf.points.push_back(added_pt);
+    }
+    //ROS_INFO_STREAM("maxRefl: " << maxRefl );
+    //std::cout << "ValidPoints: " << num_ref << "/" << pl_surf.points.size();
+  }
+  // pub_func(pl_surf, pub_full, msg->header.stamp);
+  // pub_func(pl_surf, pub_corn, msg->header.stamp);
+  ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points. max: " << maxVal << " " << oMaxVal << " n: " << ring);
 }
 
 void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
