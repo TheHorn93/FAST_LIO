@@ -4,8 +4,6 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <livox_ros_driver/CustomMsg.h>
 #include "point_type.h"
-//#include "lidar_intensity_correction/pc_intensity_correction.h"
-//#include "lidar_intensity_correction/intensity_compensation.h"
 
 #ifdef COMP_ONLY
 #include "intensity_compensation.h"

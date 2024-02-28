@@ -69,17 +69,18 @@ namespace ouster_ros {
   };
 }  // namespace ouster_ros
 
-//POINT_CLOUD_REGISTER_POINT_STRUCT( ouster_ros::Point,
-//  (float, x, x)
-//  (float, y, y)
-//  (float, z, z)
-//  (float, intensity, intensity)
-//  (std::uint32_t, t, t)
-//  (std::uint16_t, reflectivity, reflectivity)
-//  (std::uint8_t, ring, ring)
-//  (std::uint16_t, ambient, ambient)
-//  (std::uint32_t, range, range)
-//)
+POINT_CLOUD_REGISTER_POINT_STRUCT( ouster_ros::Point,
+  (float, x, x)
+  (float, y, y)
+  (float, z, z)
+  (float, intensity, intensity)
+  (std::uint32_t, t, t)
+  (std::uint16_t, reflectivity, reflectivity)
+  (std::uint8_t, ring, ring)
+  //(std::uint16_t, noise, noise)
+  (std::uint16_t, ambient, ambient)
+  (std::uint32_t, range, range)
+)
 
 struct EIGEN_ALIGN16 PointType
 {

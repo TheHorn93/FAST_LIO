@@ -566,21 +566,7 @@ void store_compensated_cloud ( typename PointCloudT::Ptr cloud, const uint64_t &
     else
     {
         laserCloudWorld = cloud;
-
-//                for ( int i = 0; i < size; i+=100 )
-//                    std::cout << "A["<<i<<"]: " << laserCloudWorld->points[i].x << " "
-//                              << laserCloudWorld->points[i].y << " "
-//                              << laserCloudWorld->points[i].z << " "
-//                              << laserCloudWorld->points[i].intensity << " "
-//                              << laserCloudWorld->points[i].t << " "
-//                              << int(laserCloudWorld->points[i].reflectivity) << " "
-//                              << int(laserCloudWorld->points[i].ring) << " "
-//                              << int(laserCloudWorld->points[i].ambient) << " "
-//                              << int(laserCloudWorld->points[i].range) << " "<< std::endl;
     }
-
-    //for ( int i = 0; i < size; ++i)
-    //    laserCloudWorld->points[i].intensity *= 65535; // Stupid HACK, due to scaling before hand...
 
     constexpr bool store_to_bag = true;
     if constexpr ( store_to_bag )

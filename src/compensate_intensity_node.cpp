@@ -11,7 +11,6 @@
 #include <Eigen/Core>
 #include <livox_ros_driver/CustomMsg.h>
 #include "preprocess.h"
-//#include "reflectance_grad.h"
 #include "input_pcl_filter.h"
 
 using PointCloudType = pcl::PointCloud<ouster_ros::Point>;
@@ -26,17 +25,6 @@ bool ptIsValid( const ouster_ros::Point& pt )
 {
     return (std::abs(pt.x) > 0.0f) || (std::abs(pt.y) > 0.0f) || (std::abs(pt.z) > 0.0f);
 }
-
-//void getValidPointsIdxs( const PointCloudType& pc_in, std::vector<uint32_t>& idxs )
-//{
-//    idxs.reserve(pc_in.points.size());
-//    // TODO: possible parallel
-//    for( size_t pt_it=0; pt_it < pc_in.points.size(); ++pt_it )
-//    {
-//        if( !ptIsValid(pc_in.points[pt_it]) ) continue;
-//        idxs.push_back( pt_it );
-//    }
-//}
 
 ouster_ros::Point getInvalidPoint ( )
 {
@@ -54,32 +42,22 @@ ouster_ros::Point getInvalidPoint ( )
 
 void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointCloudType& pc_out )
 {
-    //std::vector<uint32_t> idxs;
-    //getValidPointsIdxs( pc_in, idxs );
     const size_t num_pts = pc_in.points.size();
     size_t num_valid = 0;
     pc_out.points.resize( num_pts, getInvalidPoint() );
     float maxVal = 0, maxRefl = 0;
     // TODO possible parallel
-    //const ouster_ros::Point inv_pt = getInvalidPoint();
     for( size_t pt_it=0; pt_it < num_pts; ++pt_it )
     {
         float cur_int = ints[pt_it];
         if( cur_int <= 1e-6f ) continue; // invalid ones are set to 0 before hand
-        //if( !ptIsValid(pc_in.points[pt_it]) ) continue; // unnecessary, because checked multiple times before...
         if ( cur_int > 1.f ) cur_int = 1.f;
         ouster_ros::Point& cur_pt = pc_out.points[pt_it];
         cur_pt = pc_in.points[pt_it];
         cur_pt.intensity = cur_int;
         ++num_valid;
-        //cur_pt.reflectivity = static_cast<uint16_t>(cur_int*65535);
-        //pc_out.points.emplace_back( cur_pt );
-        //pc_out.points[pt_it].intensity = cur_int;
-        //pc_out.points[pt_it].reflectivity = static_cast<uint16_t>(cur_int*65535);
         if ( maxVal < cur_int ) maxVal = cur_int;
         if ( maxRefl < cur_pt.reflectivity ) maxRefl = cur_pt.reflectivity;
-        //std::cout << pc_out.points.back().x << ", " << pc_out.points.back().y << ", " << pc_out.points.back().z << ", " << pc_out.points.back().intensity << ", " << pc_out.points.back().reflectivity << std::endl;
-        //std::cout << "  " <<  pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << std::endl;
     }
     ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << num_valid << " of " << pc_out.points.size() << " max: " << maxVal << " ( " << maxRefl << " ) of: " << num_pts );
 }
@@ -122,20 +100,11 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     input_filter->applyFilter( pc_in, new_ints, normals_ptr );
     PointCloudType pc_out;
     transferPoints( pc_in, new_ints, pc_out );
-    //for( size_t pt_it=0; pt_it < pc_out.size(); ++pt_it )
-    //{
-    //    if(pt_it%1000 == 0)
-    //        std::cout << pc_out.points[pt_it].x << ", " << pc_out.points[pt_it].y << ", " << pc_out.points[pt_it].z << ", " << pc_out.points[pt_it].intensity << ", " << pc_out.points[pt_it].reflectivity << std::endl;
-    //}
 
     sensor_msgs::PointCloud2 msg_out;
     pcl::toROSMsg( pc_out, msg_out );
     msg_out.header = msg->header;
-    //for( size_t pt_it=0; pt_it < pc_out.size(); ++pt_it )
-    //{
-    //    if(pt_it%1000 == 0)
-    //        std::cout <<  pc_out.points[pt_it].intensity << ", ";
-    //}
+
     pub_out.publish( msg_out );
     if ( should_publish_normals )
         publishNormals( pc_in, normals, msg->header );
@@ -150,7 +119,6 @@ int main( int argc, char** argv )
     int use_channel;
     double ref_grad_w = 0.;
     std::string comp_type, comp_params, lidar_topic;
-    //nh.param<bool>("bypass_all", bypass_all, false);
     nh.param<std::string>("common/lid_topic", lidar_topic, "/livox/lidar");
     nh.param<std::string>("comp_model", comp_type, "None");
     nh.param<std::string>("comp_params", comp_params, "{}");

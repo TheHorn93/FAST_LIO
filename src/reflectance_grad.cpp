@@ -84,61 +84,9 @@ Eigen::Vector2d IrregularGrid::getIntensityGradOnPlane( const Eigen::Vector2d& p
   return Eigen::Vector2d(dx,dy);
 }
 
-
-
-//Eigen::Matrix<double, 3, 2> IrregularGrid::getGradientMat( const Eigen::Matrix<double, 6, 1>& lambda )
-//{
-//  Eigen::Matrix<double, 3, 2> mat_out;
-//  mat_out(0, 0) = lambda[0] *2; // ax^2 -> 2ax
-//  mat_out(0, 1) = lambda[2] *2; // ay^2 -> 2ay
-//  mat_out(1, 0) = lambda[1]; // axy -> ay
-//  mat_out(1, 1) = lambda[1]; // axy -> ax
-//  mat_out(2, 0) = lambda[3]; // bx -> b
-//  mat_out(2, 1) = lambda[4]; // by -> b
-//  return mat_out;
-//}
-
-//double IrregularGrid::getIntensityFromPosOnPlane( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda )
-//{
-//  //DEBUG_OUT( "lambda=" << lambda << std::endl );
-//  Eigen::Matrix<double, 6, 1> pt_params;
-//  pt_params[0] = pt_query[0] *pt_query[0];
-//  pt_params[1] = pt_query[0] *pt_query[1];
-//  pt_params[2] = pt_query[1] *pt_query[1];
-//  pt_params[3] = pt_query[0];
-//  pt_params[4] = pt_query[1];
-//  pt_params[5] = 1;
-//  //DEBUG_OUT( "ref=" << lambda.dot(pt_params) << std::endl );
-//  return lambda.dot(pt_params);
-//}
-
-
-//Eigen::Vector3d IrregularGrid::getIntensityGradOnPlane( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double, 3, 2>& grads )
-//{
-//  Eigen::Vector3d grad( 0,0,0 );
-
-//  Eigen::Vector3d pt_params_x;
-//  pt_params_x[0] = pt_query[0]; // ax^2 -> 2ax
-//  pt_params_x[1] = pt_query[1]; // axy -> ay
-//  pt_params_x[2] = 1; // bx -> b
-
-//  Eigen::Vector3d pt_params_y;
-//  pt_params_y[0] = pt_query[1]; // ay^2 -> 2ay
-//  pt_params_y[1] = pt_query[0]; // axy -> ax
-//  pt_params_y[2] = 1; // by -> b
-
-//  //DEBUG_OUT( "grads=" << grads << std::endl );
-//  //DEBUG_OUT( "x=" << pt_params_x << ", y=" << pt_params_y << std::endl );
-//  grad[0] = grads.col(0).dot( pt_params_x );
-//  grad[1] = grads.col(1).dot( pt_params_y );
-//  //DEBUG_OUT( "grad=" << grad << std::endl );
-
-//  return grad;
-//}
-
 double IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, Eigen::Vector3d& grad_out )
 {
-  constexpr bool print_info = !false;
+  constexpr bool print_info = false;
   const Eigen::Vector3d normal ( norm_p.x, norm_p.y, norm_p.z );
   //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl; 
   Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
