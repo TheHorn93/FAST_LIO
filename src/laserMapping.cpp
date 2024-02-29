@@ -124,7 +124,6 @@ PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
-//std::unique_ptr<PCLFilterBase> filter_input;
 std::string comp_type, comp_params;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -1136,7 +1135,10 @@ int main(int argc, char** argv)
     //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
     if ( ref_grad_w > 0. )
+    {
         ref_grad_w = std::sqrt( ref_grad_w );
+        p_pre->point_filter_num = 1; // filtering in compensate node already!
+    }
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
     ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );

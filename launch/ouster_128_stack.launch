@@ -7,8 +7,7 @@
     <arg name="prepare_for_parameter_estimation" default="false" />
     <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="num_filter_points" default="4" if="$(arg prepare_for_parameter_estimation)"/>
-    <arg name="num_filter_points" default="1" unless="$(arg prepare_for_parameter_estimation)"/>
+    <arg name="num_filter_points" default="4"/>
     <arg name="size_surf" default="0.5"/>
     <arg name="size_map" default="0.5"/>
     <arg name="requires_os_shift" default="true"/>
@@ -39,7 +38,9 @@
     <!-- arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.937094, "w_angle": -0.411972, "delta_range": 4.58069, "min_range": 0.168708, "v_0": 0.742844, "v_1": 1.82927, "v_2": -0.675723, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
     <!-- arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.03828, "w_angle": -0.289873, "delta_range": 5.35657, "min_range": 0, "v_0": 1.40417, "v_1": 0.110958, "v_2": 0.776304, "num_rings": 128}'/--> <!-- 50s quad easy normals ordered -->
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.183854, "w_angle": -0.354057, "delta_range": 3.48842, "min_range": 0.569719, "v_0": 0.328166, "v_1": 1.95006, "v_2": -0.261556, "num_rings": 128}'/--> <!-- 50s math med normals ordered -->
-    <arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.8098, "w_angle": -0.351655, "delta_range": 3.48451, "min_range": 0.575314, "v_0": 0.26031, "v_1": 2.06328, "v_2": -0.322571, "num_rings": 128}'/> <!-- 50s math med normals ordered -->
+    <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.8098, "w_angle": -0.351655, "delta_range": 3.48451, "min_range": 0.575314, "v_0": 0.26031, "v_1": 2.06328, "v_2": -0.322571, "num_rings": 128}'/--> <!-- 50s math med normals ordered -->
+
+    <arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 0.778773, "w_angle": 0., "w_sigmoid": 4.54819, "w_sigmoid_q": 4.66774, "v_0": 0.14495, "v_1": 0.290447, "v_2": 0.368718, "num_rings": 128}'/>
 
     <!-- old variant -->
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.562264, "w_angle": -0.0853744, "delta_range": 0.100414, "min_range": 3, "v_0": 4.11232, "v_1": 4.26689, "v_2": 5, "num_rings": 128}'/-->

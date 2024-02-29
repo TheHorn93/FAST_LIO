@@ -26,6 +26,7 @@ public:
     double max_var_mult;
     int h_filter_size;
     int w_filter_size;
+    int num_filter_points;
     int width;
     int height;
     bool requires_os_shift = false;
