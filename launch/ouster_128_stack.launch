@@ -40,6 +40,7 @@
     <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.183854, "w_angle": -0.354057, "delta_range": 3.48842, "min_range": 0.569719, "v_0": 0.328166, "v_1": 1.95006, "v_2": -0.261556, "num_rings": 128}'/--> <!-- 50s math med normals ordered -->
     <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.8098, "w_angle": -0.351655, "delta_range": 3.48451, "min_range": 0.575314, "v_0": 0.26031, "v_1": 2.06328, "v_2": -0.322571, "num_rings": 128}'/--> <!-- 50s math med normals ordered -->
 
+    <arg name="model" default="weighted_dasig_poly"/>
     <arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 0.778773, "w_angle": 0., "w_sigmoid": 4.54819, "w_sigmoid_q": 4.66774, "v_0": 0.14495, "v_1": 0.290447, "v_2": 0.368718, "num_rings": 128}'/>
 
     <!-- old variant -->
@@ -52,7 +53,7 @@
 
     <!--<arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0., "w_angle": 0.0, "delta_range": 4.5, "min_range": 0.5, "v_0": 1.5, "v_1": -0.5, "v_2": 0.35}'/>-->
     <!--<arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.9, "w_angle": -0.5, "delta_range": 4.5, "min_range": 0.5, "v_0": 1.5, "v_1": -0.5, "v_2": 0.35}' />-->
-    <arg name="model" default="weighted_dac4_poly"/>
+    <!--arg name="model" default="weighted_dac4_poly"/-->
 
     <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 1.0, "w_angle": -1.0, "delta_range": 4., "min_range": 1.0}' /-->
     <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.9, "w_angle": -0.5, "delta_range": 4.5, "min_range": 0.5}' /-->
