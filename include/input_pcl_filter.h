@@ -64,10 +64,6 @@ public:
   typedef pcl::PointCloud<_PtTp> PointCloudTp;
 
   void applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals = nullptr ) const override;
-#ifdef DISABLED_STUFF
-  void filterOutlier( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
-  bool filterOutlierPoint( const PointCloudTp& pc_in, Eigen::VectorXf & new_ints, size_t h_it, size_t w_it ) const;
-#endif
   void filterOutlierCloud( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
   void normalizeIntensity( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
 #ifdef COMP_ONLY

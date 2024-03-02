@@ -5,10 +5,6 @@
 
 #include "input_pcl_filter.h"
 #include "ConfiguruLoader.h"
-#ifndef COMP_ONLY
-#include "load_files.h"
-#endif
-//#include "ros/ros.h"
 
 template<class _Tp, class _ITp>
 struct TypeIsEqual
@@ -153,7 +149,7 @@ template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& pc_in, Eigen::VectorXf & ints_out ) const
 {
   const PointCloud<ScalarType>& pc = pc_in.getPCs()[0];
-  this->m_model->compensateCloud( pc, pc_in.distances(), pc_in.refAngles(), pc.pointPoss().row(0), ints_out );
+  this->m_model->compensateCloud( pc, pc_in.distances(), pc_in.refAngles(), pc.pointPoss(), ints_out );
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>

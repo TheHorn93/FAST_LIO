@@ -1,5 +1,9 @@
 #pragma once
-#include "input_pcl_filter.h"
+#include <pcl_conversions/pcl_conversions.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <livox_ros_driver/CustomMsg.h>
+#include "point_type.h"
+
 using namespace std;
 
 #define IS_VALID(a)  ((abs(a)>1e8) ? true : false)
