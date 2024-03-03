@@ -132,24 +132,20 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
   [[maybe_unused]] const double t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
   //pc_int_cor.call(21, 15);
   //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
-  applyModel( pc_int_cor, ints_out );
+
+  const PointCloud<ScalarType>& pc = pc_int_cor.getPCs()[0];
+  this->m_model->compensateCloud( pc, pc.sqrd_dists(), pc.cos_angles(), pc.pointPoss(), ints_out );
+
   [[maybe_unused]] const double t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
   if ( normals != nullptr )
   {
-    *normals = pc_int_cor.getPCs()[0].getNormals().template cast<float>();
+    *normals = pc.getNormals().template cast<float>();
   }
 
   //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
   //std::cout << "end " << std::endl;
   if constexpr ( print_info ) ROS_INFO_STREAM("times... " << t1 << " n: " << (t2-t1) << " cor: " << (t3-t2) << " n: " << this->getParams().num_filter_points);
-}
-
-template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::applyModel( const PCIntensityComputation& pc_in, Eigen::VectorXf & ints_out ) const
-{
-  const PointCloud<ScalarType>& pc = pc_in.getPCs()[0];
-  this->m_model->compensateCloud( pc, pc_in.distances(), pc_in.refAngles(), pc.pointPoss(), ints_out );
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>

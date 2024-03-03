@@ -66,9 +66,6 @@ public:
   void applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals = nullptr ) const override;
   void filterOutlierCloud( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
   void normalizeIntensity( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
-#ifdef COMP_ONLY
-  void applyModel( const PCIntensityComputation& pc_in, Eigen::VectorXf & ints_out ) const;
-#endif
 };
 
 template<class _PointTp>
