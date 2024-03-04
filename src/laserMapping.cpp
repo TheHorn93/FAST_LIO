@@ -1137,7 +1137,7 @@ int main(int argc, char** argv)
     if ( ref_grad_w > 0. )
     {
         ref_grad_w = std::sqrt( ref_grad_w );
-        p_pre->point_filter_num = 1; // filtering in compensate node already!
+        //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
     ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
@@ -1316,14 +1316,14 @@ int main(int argc, char** argv)
                     if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
                     if ( maxValR < feats_undistort->points[i].reflectance ) maxValR = feats_undistort->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_undistort->size() << std::endl;
+                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_undistort->size() << " pf: " <<  p_pre->point_filter_num << std::endl;
                 maxValR = 0; maxValI = 0;
                 for (int i = 0; i < feats_down_body->size(); i++)
                 {
                     if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
                     if ( maxValR < feats_down_body->points[i].reflectance ) maxValR = feats_down_body->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_down_body->size() << std::endl;
+                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_down_body->size() << " pf: " <<  p_pre->point_filter_num << std::endl;
                 maxValR = 0; maxValI = 0;
             }
 

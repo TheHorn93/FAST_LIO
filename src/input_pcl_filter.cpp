@@ -118,6 +118,8 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
   constexpr bool print_info = false;
 
   normalizeIntensity( pc_in, ints_out );
+
+  // TODO: reenable the stuff afterwards...
   return;
 
   filterOutlierCloud( pc_in, ints_out );
