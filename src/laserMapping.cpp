@@ -600,9 +600,9 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     //std::cout << "Pub registered" << std::endl;
     if(scan_pub_en)
     {
-
+        constexpr bool print_info = false;
         float maxVal = 0, maxValI = 0;
-        if constexpr ( false )
+        if constexpr ( print_info )
         {
             for (int i = 0; i < feats_undistort->size(); i++)
             {
@@ -633,6 +633,7 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
             if ( maxValI < laserCloudWorld->points[i].intensity ) maxValI = laserCloudWorld->points[i].intensity;
             if ( maxVal < laserCloudWorld->points[i].reflectance ) maxVal = laserCloudWorld->points[i].reflectance;
         }
+        if constexpr ( print_info )
         ROS_INFO_STREAM_THROTTLE(1, "maxPubVal: " << maxVal << " I: " << maxValI);
         sensor_msgs::PointCloud2 laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
@@ -1023,7 +1024,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             ekfom_data.h_x.template block<1, 12>(res_it+1,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
             ekfom_data.h(res_it+1) = -int_error;
 
-            constexpr bool print_info = true;
+            constexpr bool print_info = false;
             if constexpr ( print_info )
             {
                 if ( (res_it & 1023) == 0 )

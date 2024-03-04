@@ -25,6 +25,7 @@ ouster_ros::Point getInvalidPoint ( )
 
 void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointCloudType& pc_out )
 {
+    constexpr bool print_info = false;
     const size_t num_pts = pc_in.points.size();
     size_t num_valid = 0;
     pc_out.points.resize( num_pts, getInvalidPoint() );
@@ -48,6 +49,7 @@ void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointC
         if ( maxVal < cur_pt.intensity ) maxVal = cur_pt.intensity;
         if ( maxRefl < cur_pt.reflectivity ) maxRefl = cur_pt.reflectivity;
     }
+    if constexpr ( print_info )
     ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << num_valid << " of " << pc_out.points.size() << " max: " << maxVal << " (R: " << maxRefl << " ) of: " << num_pts );
 }
 
