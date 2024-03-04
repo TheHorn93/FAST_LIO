@@ -20,12 +20,6 @@ std::unique_ptr<PCLFilterModelBase<ouster_ros::Point>> input_filter;
 ros::Publisher pub_out, pub_normals;
 bool g_pass_through = false;
 
-//inline
-//bool ptIsValid( const ouster_ros::Point& pt )
-//{
-//    return (std::abs(pt.x) > 0.0f) || (std::abs(pt.y) > 0.0f) || (std::abs(pt.z) > 0.0f);
-//}
-
 ouster_ros::Point getInvalidPoint ( )
 {
     ouster_ros::Point invalid_point;
@@ -49,14 +43,19 @@ void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointC
     // TODO possible parallel
     for( size_t pt_it=0; pt_it < num_pts; ++pt_it )
     {
-        float cur_int = ints[pt_it];
-        if( cur_int <= 1e-6f ) continue; // invalid ones are set to 0 before hand
-        if ( cur_int > 1.f ) cur_int = 1.f;
         ouster_ros::Point& cur_pt = pc_out.points[pt_it];
         cur_pt = pc_in.points[pt_it];
-        cur_pt.intensity = cur_int;
+        cur_pt.intensity = ints[pt_it];
+
+        if ( cur_pt.intensity <= 1e-6f )
+        {
+            cur_pt.intensity = 0;
+            cur_pt.reflectivity = 0;
+            continue;
+        }
+
         ++num_valid;
-        if ( maxVal < cur_int ) maxVal = cur_int;
+        if ( maxVal < cur_pt.intensity ) maxVal = cur_pt.intensity;
         if ( maxRefl < cur_pt.reflectivity ) maxRefl = cur_pt.reflectivity;
     }
     ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << num_valid << " of " << pc_out.points.size() << " max: " << maxVal << " (R: " << maxRefl << " ) of: " << num_pts );
@@ -98,6 +97,8 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     Eigen::Matrix3Xf * normals_ptr = should_publish_normals ? & normals : nullptr;
     Eigen::VectorXf new_ints;
     input_filter->applyFilter( pc_in, new_ints, normals_ptr );
+    new_ints = new_ints.cwiseMin(1.f);
+
     PointCloudType pc_out;
     transferPoints( pc_in, new_ints, pc_out );
 
