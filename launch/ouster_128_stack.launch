@@ -14,7 +14,7 @@
 
     <param name="common/comp_lid_topic" type="string" value="/os_cloud_node/points" if="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="use_channel" default="0"/>
+    <arg name="use_channel" default="1"/>
     <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "delta_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
     <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "delta_range": 7.88972, "min_range": -0.839182, "wave_offset": 2393.75, "wave_length" : 0.187729, "wave_per" : -0.043118, "v_0": 2.65737, "v_1": 0.13157, "v_2": 0.380637, "file_name" : "int_wdac4w_poly"}'/-->
     <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "delta_range": 7.88972, "min_range": -0.839182, "wave_offset": 0., "wave_length" : 1., "wave_per" : 1., "v_0": 0., "v_1": 0., "v_2": 0., "file_name" : "int_wdac4w_poly"}'/-->

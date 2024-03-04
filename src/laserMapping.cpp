@@ -1002,7 +1002,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         const int & pt_it = valid_pts[i];
         const PointType &point_world = feats_down_world->points[pt_it];
         const PointVector& points_near = Nearest_Points[pt_it];
-        if ( point_world.reflectance > 0.0 && ref_grad_w >= 0. )
+        if ( point_world.reflectance > 0.f && ref_grad_w >= 0.f )
         {
             // get reflectance gradient to surface
             V3D ref_grad; // should be in world frame

@@ -1,17 +1,6 @@
-#include <omp.h>
-#include <mutex>
-#include <math.h>
-#include <thread>
-#include <fstream>
-#include <csignal>
-#include <unistd.h>
-#include <Python.h>
-#include <so3_math.h>
-#include <ros/ros.h>
-#include <Eigen/Core>
-#include <livox_ros_driver/CustomMsg.h>
 #include "preprocess.h"
 #include "input_pcl_filter.h"
+#include <ros/ros.h>
 
 using PointCloudType = pcl::PointCloud<ouster_ros::Point>;
 using PointCloudNormalType = pcl::PointCloud<pcl::PointNormal>;
@@ -49,6 +38,7 @@ void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointC
 
         if ( cur_pt.intensity <= 1e-6f )
         {
+            //cur_pt = getInvalidPoint();
             cur_pt.intensity = 0;
             cur_pt.reflectivity = 0;
             continue;

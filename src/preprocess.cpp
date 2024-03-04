@@ -159,6 +159,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
   pl_raw_os = pl_orig;
 
   const int plsize = pl_orig.size();
+  const float blind2 = (blind * blind);
   pl_surf.reserve(plsize);
 
   if ( pass_through )
@@ -185,9 +186,8 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
       if (i % point_filter_num != 0) continue;
       if ( !isValidPoint( pl_orig.points[i] ) ) continue;
 
-      double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
-
-      if (range < (blind * blind)) continue;
+      const float range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
+      if (range < blind2) continue;
 
       PointType added_pt;
       added_pt.x = pl_orig.points[i].x;
@@ -199,7 +199,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
       added_pt.normal_y = 0;
       added_pt.normal_z = 0;
       added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
-      pl_surf.points.push_back(added_pt);
+      pl_surf.points.emplace_back(added_pt);
     }
     //ROS_INFO_STREAM("maxRefl: " << maxRefl );
   }
