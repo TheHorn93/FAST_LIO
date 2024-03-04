@@ -20,11 +20,11 @@ std::unique_ptr<PCLFilterModelBase<ouster_ros::Point>> input_filter;
 ros::Publisher pub_out, pub_normals;
 bool g_pass_through = false;
 
-inline
-bool ptIsValid( const ouster_ros::Point& pt )
-{
-    return (std::abs(pt.x) > 0.0f) || (std::abs(pt.y) > 0.0f) || (std::abs(pt.z) > 0.0f);
-}
+//inline
+//bool ptIsValid( const ouster_ros::Point& pt )
+//{
+//    return (std::abs(pt.x) > 0.0f) || (std::abs(pt.y) > 0.0f) || (std::abs(pt.z) > 0.0f);
+//}
 
 ouster_ros::Point getInvalidPoint ( )
 {
@@ -59,7 +59,7 @@ void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointC
         if ( maxVal < cur_int ) maxVal = cur_int;
         if ( maxRefl < cur_pt.reflectivity ) maxRefl = cur_pt.reflectivity;
     }
-    ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << num_valid << " of " << pc_out.points.size() << " max: " << maxVal << " ( " << maxRefl << " ) of: " << num_pts );
+    ROS_INFO_STREAM_THROTTLE(1,"VALID Ints: " << num_valid << " of " << pc_out.points.size() << " max: " << maxVal << " (R: " << maxRefl << " ) of: " << num_pts );
 }
 
 void publishNormals(const pcl::PointCloud<ouster_ros::Point> & pc_in, const Eigen::Matrix3Xf & normals, const std_msgs::Header & header )

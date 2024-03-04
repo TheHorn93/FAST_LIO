@@ -1310,22 +1310,21 @@ int main(int argc, char** argv)
             if constexpr ( false )
             {
                 // voxelgrid filter drops reflectance channel.
-                float maxVal = 0, maxValI = 0;
+                float maxValR = 0, maxValI = 0;
                 for (int i = 0; i < feats_undistort->size(); i++)
                 {
                     if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
-                    if ( maxVal < feats_undistort->points[i].reflectance ) maxVal = feats_undistort->points[i].reflectance;
+                    if ( maxValR < feats_undistort->points[i].reflectance ) maxValR = feats_undistort->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << " #: " << feats_undistort->size() << std::endl;
-                maxVal = 0; maxValI = 0;
+                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_undistort->size() << std::endl;
+                maxValR = 0; maxValI = 0;
                 for (int i = 0; i < feats_down_body->size(); i++)
                 {
                     if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
-                    if ( maxVal < feats_down_body->points[i].reflectance ) maxVal = feats_down_body->points[i].reflectance;
+                    if ( maxValR < feats_down_body->points[i].reflectance ) maxValR = feats_down_body->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxVal << " I: " << maxValI << " #: " << feats_down_body->size() << std::endl;
-                maxVal = 0; maxValI = 0;
-
+                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_down_body->size() << std::endl;
+                maxValR = 0; maxValI = 0;
             }
 
 

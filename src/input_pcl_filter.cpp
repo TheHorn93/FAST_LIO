@@ -117,9 +117,11 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
 {
   constexpr bool print_info = false;
 
-  //std::cout << "Start ";
   normalizeIntensity( pc_in, ints_out );
   filterOutlierCloud( pc_in, ints_out );
+
+  //ROS_INFO_STREAM( "pts: " << pc_in.points.size() << " " << pc_in.width << " " << pc_in.height );
+
   PCIntensityComputation pc_int_cor;
   [[maybe_unused]] std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
   pc_int_cor.addPC(pc_in, ints_out, PcInfoIntensity(), this->getParams().requires_os_shift);
@@ -130,8 +132,6 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
   pc_int_cor.poses() = pose;
   pc_int_cor.precomputeUsingOrdered( this->getParams().height, this->getParams().width, this->getParams().h_filter_size, this->getParams().w_filter_size, this->getParams().num_filter_points );
   [[maybe_unused]] const double t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-  //pc_int_cor.call(21, 15);
-  //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
 
   const PointCloud<ScalarType>& pc = pc_int_cor.getPCs()[0];
   this->m_model->compensateCloud( pc, pc.sqrd_dists(), pc.cos_angles(), pc.pointPoss(), ints_out );
@@ -143,9 +143,7 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
     *normals = pc.getNormals().template cast<float>();
   }
 
-  //for(size_t it;it<ints_out.size();++it){if(it%1000==0)std::cout << it << ": " << ints_out[it] << std::endl; }
-  //std::cout << "end " << std::endl;
-  if constexpr ( print_info ) ROS_INFO_STREAM("times... " << t1 << " n: " << (t2-t1) << " cor: " << (t3-t2) << " n: " << this->getParams().num_filter_points);
+  if constexpr ( print_info ) ROS_INFO_STREAM_THROTTLE(1,"times... " << t1 << " n: " << (t2-t1) << " cor: " << (t3-t2) << " n: " << this->getParams().num_filter_points);
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>
@@ -159,8 +157,9 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
     if constexpr ( print_info )
     {
         float new_int_min = 1<<16, new_int_max = -1;
-        for ( const float & f : new_int )
+        for ( int i = 0; i < new_int.rows(); ++i )
         {
+            const float & f = new_int[i];
             if ( f < new_int_min ) new_int_min = f;
             if ( f > new_int_max ) new_int_max = f;
         }
@@ -211,11 +210,11 @@ void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc
         ++ct_int_rep;
     }
     if constexpr ( print_info )
-            ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << max_threshold << " for: " << num_valid_pts << " 0ofThose: " << ct_int_rep);
+        ROS_INFO_STREAM( "FoC: mean: " << mean << " sig " << variance << " mth: " << max_threshold << " for: " << num_valid_pts << " 0ofThose: " << ct_int_rep);
 
     if constexpr ( print_info )
-    ROS_INFO_STREAM( "FoC: Filtered Points: " << ct_int_rep << "/" << num_valid_pts << " of " << pc_in.size()
-     << " dt: " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() );
+        ROS_INFO_STREAM( "FoC: Filtered Points: " << ct_int_rep << "/" << num_valid_pts << " of " << pc_in.size()
+         << " dt: " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() );
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>
