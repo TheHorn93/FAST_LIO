@@ -89,7 +89,8 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     Eigen::Matrix3Xf * normals_ptr = should_publish_normals ? & normals : nullptr;
     Eigen::VectorXf new_ints;
     input_filter->applyFilter( pc_in, new_ints, normals_ptr );
-    new_ints = new_ints.cwiseMin(1.f);
+
+    //new_ints = new_ints.cwiseMin(1.f);
 
     PointCloudType pc_out;
     transferPoints( pc_in, new_ints, pc_out );

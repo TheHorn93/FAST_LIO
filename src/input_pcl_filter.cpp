@@ -239,7 +239,7 @@ void PCLFilter<_PtTp, _data_channel>::normalizeIntensity( const PointCloudTp& pc
     if constexpr ( print_info ) if ( new_min_val > cur_int ) new_min_val = cur_int;
     //new_int[pt_it] = float(cur_int) / float(PointIntensity<_PtTp, _data_channel>::max_val);
   }
-  new_int *= inv_max_val;
+  new_int *= inv_max_val; // TODO: reenable!
   if constexpr ( print_info )
   ROS_INFO_STREAM("" << (PointIntensity<_PtTp, _data_channel>::max_val)<< " " << inv_max_val  << " actual_max_val: " << new_max_val << " " << new_min_val);
 }

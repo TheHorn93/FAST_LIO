@@ -95,6 +95,7 @@ bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, stor
 std::shared_ptr<std::ofstream> posesFile = nullptr;
 std::shared_ptr<std::ofstream> pcdPosesFile = nullptr;
 std::shared_ptr<std::ofstream> grad_file = nullptr;
+bool use_reflec_enabled = false;
 double ref_grad_w = 0.1;
 std::string tum_out_fname, tum_comp_fname, grad_out_fname;
 int use_channel;
@@ -924,12 +925,13 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
                 normvec->points[i].curvature = 
                 res_last[i] = abs(pd2);
 
-                if ( point_world.reflectance > 0.f && ref_grad_w >= 0.f )
+                if ( use_reflec_enabled &&  point_world.reflectance > 0.f )
                 {
                     // get reflectance gradient to surface
+                    double value = 0;
                     V3D ref_grad; // should be in world frame
-                    intvec->points[i].intensity = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, normvec->points[i], ref_grad );
-                    point_selected_int[i] = true;
+                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, normvec->points[i], value, ref_grad );
+                    intvec->points[i].intensity = value;
                     intvec->points[i].x = ref_grad(0);
                     intvec->points[i].y = ref_grad(1);
                     intvec->points[i].z = ref_grad(2);
@@ -941,8 +943,6 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     /// Accumulate points in laser rep and associated normvecs for all valid points
     // Result are two point clouds: 1st containing points in laser coor-rep, 2nd containing estimated plane normal vecs as points
     effct_feat_num = 0;
-    //std::vector<int> valid_pts;
-    //valid_pts.reserve(feats_down_size);
     laserCloudOri->reserve(feats_down_size);
     corr_normvect->reserve(feats_down_size);
     corr_intvect->reserve(feats_down_size);
@@ -954,7 +954,6 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             corr_normvect->points.emplace_back(normvec->points[i]);
             corr_intvect->points.emplace_back(intvec->points[i]);
             total_residual += res_last[i];
-            //valid_pts.emplace_back(i);
             ++effct_feat_num;
         }
     }
@@ -973,7 +972,6 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     /*** Computation of Measurment Jacobian matrix H and measurents vector ***/
     size_t num_residuals = effct_feat_num*2;
     ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
-    //ekfom_data.h.resize(num_residuals);
     ekfom_data.h = MatrixXd::Zero(num_residuals,1);
 
     /** Create one error point for point_to_plane and one error point for intensity gradient point */
@@ -1026,10 +1024,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         ekfom_data.h(res_it) = -norm_p.intensity;
 
         /** Add Intensity gradient to kalman state. */
-        //const int & pt_it = valid_pts[i];
-        //const PointType &point_world = feats_down_world->points[pt_it];
-        //const PointVector& points_near = Nearest_Points[pt_it];
-        if ( point_selected_int[i] && ref_grad_w > 0.f )
+        if ( use_reflec_enabled && point_selected_int[i] )
         {
             const PointType &int_p = corr_intvect->points[i];
             // get reflectance gradient to surface
@@ -1062,72 +1057,12 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             ++num_from_intensity;
             ++res_it;
         }
-//        const int & pt_it = valid_pts[i];
-//        const PointType &point_world = feats_down_world->points[pt_it];
-//        const PointVector& points_near = Nearest_Points[pt_it];
-//        if ( point_world.reflectance > 0.f && ref_grad_w >= 0.f )
-//        {
-//            // get reflectance gradient to surface
-//            V3D ref_grad; // should be in world frame
-//            double int_error = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, norm_p, ref_grad );
-//            // weight them
-//            ref_grad *= ref_grad_w;
-//            int_error *= ref_grad_w;
-
-//            // all points in world, normal too.
-//            // ref_g' * ( I, R_wi * [-p_i]_x )
-
-//            // Transform intensity grad: World -> IMU coords
-//            V3D C_ref(s.rot.conjugate() * ref_grad); // Conjugates quaternion s.rot -> rotate world frame grad vec to imu frame
-//            V3D A_ref(point_crossmat * C_ref);
-
-
-//            /** Add vector to state. */
-//            ekfom_data.h_x.template block<1, 12>(res_it+1,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-//            ekfom_data.h(res_it+1) = -int_error;
-
-//            constexpr bool print_info = false;
-//            if constexpr ( print_info )
-//            {
-//                if ( (res_it & 1023) == 0 )
-//                {
-//                    ROS_INFO_STREAM("ri: " << res_it << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h(res_it+1) << "\n"
-//                                    << (ekfom_data.h_x.template block<2, 6>(res_it,0)) );
-//                }
-//            }
-//        }
     }
     ekfom_data.h_x.conservativeResize(res_it,12);
     ekfom_data.h.conservativeResize(res_it,1);
 
     if constexpr ( print_info )
-    ROS_INFO_STREAM("int: " << num_from_intensity << " d: " << effct_feat_num << " H: " << ekfom_data.h_x.rows() << " x " << ekfom_data.h_x.cols() << " h: " << ekfom_data.h.rows() << " " << ekfom_data.h.cols()  );
-
-//    if constexpr ( false )
-//    {
-//        double grad_mean = 0.0, grad_var = 0.0;
-//        double int_mean = 0.0, int_var = 0.0;
-//        size_t res_it = 0;
-//        for (int i = 0; i < effct_feat_num; i++)
-//        {
-//            grad_mean += ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm();
-//            int_mean += ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm();
-//            res_it += 2;
-//        }
-//        grad_mean /= effct_feat_num;
-//        int_mean /= (effct_feat_num*ref_grad_w);
-//        res_it = 0;
-//        for (int i = 0; i < effct_feat_num; i++)
-//        {
-//            grad_var += std::pow(grad_mean -ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm(), 2);
-//            int_var += std::pow(int_mean -ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm(), 2);
-//            res_it += 2;
-//        }
-//        grad_var /= effct_feat_num;
-//        int_var /= effct_feat_num;
-//        (*grad_file) << grad_mean << ", " << grad_var << ", " << int_mean << ", " << int_var << "\n";
-//    }
-
+    ROS_INFO_STREAM_THROTTLE(1,"int: " << num_from_intensity << " d: " << effct_feat_num << " H: " << ekfom_data.h_x.rows() << " x " << ekfom_data.h_x.cols() << " h: " << ekfom_data.h.rows() << " " << ekfom_data.h.cols()  );
     solve_time += omp_get_wtime() - solve_start_;
 }
 
@@ -1200,10 +1135,12 @@ int main(int argc, char** argv)
     grad_file = std::make_shared<std::ofstream>(grad_out_fname);
     //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
+    use_reflec_enabled = false;
     const double ref_grad_w_orig = ref_grad_w;
     if ( ref_grad_w > 0. )
     {
         ref_grad_w = std::sqrt( ref_grad_w );
+        use_reflec_enabled = true;
         //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << tum_out_fname);
