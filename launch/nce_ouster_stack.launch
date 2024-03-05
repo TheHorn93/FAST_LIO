@@ -7,60 +7,17 @@
     <arg name="prepare_for_parameter_estimation" default="false" />
     <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="num_filter_points" default="4"/> <!-- done in normal estim. -->
+    <arg name="num_filter_points" default="4"/>
     <arg name="size_surf" default="0.5"/>
     <arg name="size_map" default="0.5"/>
     <arg name="requires_os_shift" default="true"/>
 
     <param name="common/comp_lid_topic" type="string" value="/os_cloud_node/points" if="$(arg prepare_for_parameter_estimation)" />
 
-    <arg name="use_channel" default="0"/>
-    <!-- arg name="params" default='{"type": "weighted_dac4w_poly", "file_name" : "ref_wdac4w_poly", "w_dist": -0.343993, "w_angle": -0.109733, "delta_range": 2.13006, "min_range": 0.869073, "wave_offset": 2408.2, "wave_length": 0.187541, "wave_per": -0.0951347, "v_0": 5.19477, "v_1": -3.97524, "v_2": 2.13769}'/ -->
-    <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "delta_range": 7.88972, "min_range": -0.839182, "wave_offset": 2393.75, "wave_length" : 0.187729, "wave_per" : -0.043118, "v_0": 2.65737, "v_1": 0.13157, "v_2": 0.380637, "file_name" : "int_wdac4w_poly"}'/-->
-    <!--arg name="params" default='{ "type" : "weighted_dac4w_poly", "w_dist" : 1.13079, "w_angle" : -0.116127, "delta_range": 7.88972, "min_range": -0.839182, "wave_offset": 0., "wave_length" : 1., "wave_per" : 1., "v_0": 0., "v_1": 0., "v_2": 0., "file_name" : "int_wdac4w_poly"}'/-->
-    <!--arg name="params" default='{"type": "weighted_da", "w_dist": 0.905372, "w_angle": -0.215389}'/-->
-    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 1.0, "w_angle": -1.0, "delta_range": 4., "min_range": 1.0}'/-->
-    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.932321, "w_angle": -0.467848, "delta_range": 4.83995, "min_range": 0.906348}'/-->
-    <!-- arg name="model" default="None"/-->
-
-    <!-- log variant -->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.0543411, "w_angle": -0.281186, "delta_range": 5.08487, "min_range": 0, "v_0": 0.988385, "v_1": 0.319676, "v_2": 0.810306, "num_rings": 128}'/-->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.073483, "w_angle": -0.238107, "delta_range": 4.86105, "min_range": 0.124723, "v_0": 0.786091, "v_1": 0.426115, "v_2": 0.151636, "num_rings": 128}'/-->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.058032, "w_angle": -0.239848, "delta_range": 4.5241, "min_range": 0.313185, "v_0": 0.884997, "v_1": 1.22126, "v_2": 0.447523, "num_rings": 128}'/--> <!--20-->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0336394, "w_angle": -0.301317, "delta_range": 5.29421, "min_range": 0.0, "v_0": 1.57547, "v_1": -0.0499185, "v_2": 1.25848, "num_rings": 128}'/>--> <!-- 50 -->
-    <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.06131, "w_angle": -0.190189, "delta_range": 5.24361, "min_range": 0, "v_0": 2.25558, "v_1": -0.523643, "v_2": 1.14553, "num_rings": 128}'/--> <!--20-->
-
-
-    <!-- log variants with normals estimated per cloud -->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.0450446, "w_angle": -0.414042, "delta_range": 4.51833, "min_range": 0.196707, "v_0": 1.16965, "v_1": 0.84327, "v_2": -0.128998, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.0270543, "w_angle": -0.296347, "delta_range": 5.29055, "min_range": 0.00257228, "v_0": 1.38164, "v_1": 0.246453, "v_2": 0.661007, "num_rings": 128}'/--> <!-- 50s quad easy ... normals ordered -->
-    <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.937094, "w_angle": -0.411972, "delta_range": 4.58069, "min_range": 0.168708, "v_0": 0.742844, "v_1": 1.82927, "v_2": -0.675723, "num_rings": 128}'/--> <!-- 50s math easy ... normals ordered -->
-    <!--arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.03828, "w_angle": -0.289873, "delta_range": 5.35657, "min_range": 0, "v_0": 1.40417, "v_1": 0.110958, "v_2": 0.776304, "num_rings": 128}'/--> <!-- 50s quad easy normals ordered -->
-
-    <!-- old variant -->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": -0.562264, "w_angle": -0.0853744, "delta_range": 0.100414, "min_range": 3, "v_0": 4.11232, "v_1": 4.26689, "v_2": 5, "num_rings": 128}'/-->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.115452, "w_angle": -0.30913, "delta_range": 0.438502, "min_range": 2.57986, "v_0": -4.80252, "v_1": 5, "v_2": -1.41938, "num_rings": 128}'/-->
-    <!--arg name="params" default='{"type": "reflectivity weighted_dac4_poly", "w_dist": 0.000992819, "w_angle": -0.483645, "delta_range": 1.42231, "min_range": 2.58701, "v_0": -4.1607, "v_1": 1.49956, "v_2": 5, "num_rings": 128}'/-->
-
-    <!--<arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0.928614, "w_angle": -0.233805, "delta_range": 4.89254, "min_range": 0.122459, "v_0": 0.753873, "v_1": 0.457745, "v_2": 0.162194, "num_rings": 128}'/>-->
-    <!--<arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 1.18229, "w_angle": -0.240471, "delta_range": 2.48923, "min_range": 1.78497, "v_0": 0.836429, "v_1": 5, "v_2": -1.93428, "num_rings": 128}'/>-->
-
-    <!--<arg name="params" default='{"type": "weighted_dac4_poly", "w_dist": 0., "w_angle": 0.0, "delta_range": 4.5, "min_range": 0.5, "v_0": 1.5, "v_1": -0.5, "v_2": 0.35}'/>-->
-    <!--<arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.9, "w_angle": -0.5, "delta_range": 4.5, "min_range": 0.5, "v_0": 1.5, "v_1": -0.5, "v_2": 0.35}' />-->
-    <!--arg name="model" default="weighted_dac4_poly"/-->
+    <arg name="use_channel" default="1"/>
     <arg name="model" default="weighted_dasig_poly"/>
     <arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 0.898667, "w_angle": -0.602007, "w_sigmoid": 4.89747, "w_sigmoid_q": 4.9239, "v_0": 0.32537, "v_1": 0.485697, "v_2": 0.59017, "u_0": 0.270083, "u_1": 0.229198, "u_2": 0.210117, "num_rings": 128}'/> <!-- math med 50s, normals ordered -->
-    
 
-    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 1.0, "w_angle": -1.0, "delta_range": 4., "min_range": 1.0}' /-->
-    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0.9, "w_angle": -0.5, "delta_range": 4.5, "min_range": 0.5}' /-->
-    <!--arg name="params" default='{"type": "weighted_dac4", "w_dist": 0., "w_angle": -0.2, "delta_range": 4.5, "min_range": 0.5}' /-->
-    <!--arg name="model" default="weighted_dac4"/-->
-
-    <arg name="data_set" default="nc_math/" />
-    <arg name="data_path" value="/home/jhorn/Documents/Uni/MasterThesis/data/" />
-    <arg name="folder" value="$(arg data_path)/$(arg data_set)/" />
-    
     <arg name="grad_w" default="0.0" if="$(arg prepare_for_parameter_estimation)" />
     <arg name="grad_w" default="0.1" unless="$(arg prepare_for_parameter_estimation)" />
     <param name="ref_grad_w" type="double" value="$(arg grad_w)" />
@@ -73,14 +30,6 @@
     <param name="requires_os_shift" type="bool" value="$(arg requires_os_shift)"/>
     <param name="w_filter_size" type="int" value="2"/>
     <param name="h_filter_size" type="int" value="2"/>
-    <arg name="out_bag" value="$(arg folder)/path_w$(arg grad_w).bag" />
-    <!-- node pkg="rosbag" type="record" name="record_traj" args="/Odometry -O $(arg out_bag)" / -->
-    
-    <!--<arg name="bag_path" value="$(arg folder)/raw_data.bag"/>-->
-    <!-- arg name="bag_path" value="$(arg data_set)"/ -->
-    <arg name="bag_args" value="--clock --start=0 --delay=3 --rate=1.0"/>
-    <!--<node pkg="rosbag" type="play" name="player" output="screen" args="$(arg bag_args) $(arg bag_path)" required="true"/>-->
-
 
     <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch">
         <arg name="dont_load_params" value="$(arg dont_load_params)"/>

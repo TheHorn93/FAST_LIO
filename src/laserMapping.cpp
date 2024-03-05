@@ -89,7 +89,7 @@ double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min
 double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
 int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
-bool   point_selected_surf[100000] = {0};
+bool   point_selected_surf[100000] = {0}, point_selected_int[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, store_compensated_ = false;
 std::shared_ptr<std::ofstream> posesFile = nullptr;
@@ -120,8 +120,10 @@ PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
 PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
+PointCloudXYZI::Ptr intvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
+PointCloudXYZI::Ptr corr_intvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
 std::string comp_type, comp_params;
@@ -598,7 +600,7 @@ PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
 void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 {
     //std::cout << "Pub registered" << std::endl;
-    if(scan_pub_en)
+    if(scan_pub_en && pubLaserCloudFull.getNumSubscribers() > 0)
     {
         constexpr bool print_info = false;
         float maxVal = 0, maxValI = 0;
@@ -714,6 +716,8 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 
 void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
 {
+    if ( pubLaserCloudFull_body.getNumSubscribers() <= 0 ) return;
+
     int size = feats_undistort->points.size();
     PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
 
@@ -733,6 +737,8 @@ void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
 
 void publish_effect_world(const ros::Publisher & pubLaserCloudEffect)
 {
+    if ( pubLaserCloudEffect.getNumSubscribers() <= 0 ) return;
+
     PointCloudXYZI::Ptr laserCloudWorld( \
                     new PointCloudXYZI(effct_feat_num, 1));
     for (int i = 0; i < effct_feat_num; i++)
@@ -749,6 +755,8 @@ void publish_effect_world(const ros::Publisher & pubLaserCloudEffect)
 
 void publish_map(const ros::Publisher & pubLaserCloudMap)
 {
+    if ( pubLaserCloudMap.getNumSubscribers() <= 0 ) return;
+
     sensor_msgs::PointCloud2 laserCloudMap;
     pcl::toROSMsg(*featsFromMap, laserCloudMap);
     laserCloudMap.header.stamp = ros::Time().fromSec(lidar_end_time);
@@ -842,6 +850,7 @@ void publish_path(const ros::Publisher pubPath)
     if (jjj % 10 == 0)
     {
         path.poses.push_back(msg_body_pose);
+        if ( pubPath.getNumSubscribers() <= 0 ) return;
         pubPath.publish(path);
     }
 }
@@ -849,15 +858,17 @@ void publish_path(const ros::Publisher pubPath)
 
 void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) // TODO measurement prediction from state prediction
 {
+    constexpr bool print_info = false;
     double match_start = omp_get_wtime();
     laserCloudOri->clear();
     corr_normvect->clear();
+    corr_intvect->clear();
     total_residual = 0.0;
 
     /** closest surface search and residual computation **/
     #ifdef MP_EN
         omp_set_num_threads(MP_PROC_NUM);
-        #pragma omp parallel for
+        #pragma omp parallel for schedule (dynamic, 16)
     #endif
     for (int i = 0; i < feats_down_size; i++)
     {
@@ -894,6 +905,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         /// PCA of 5 nearest points
         VF(4) pabcd;
         point_selected_surf[i] = false;
+        point_selected_int[i] = false;
         if (esti_plane(pabcd, points_near, 0.1f)) // Estimate plane by pca: see here: "https://stats.stackexchange.com/questions/163356/fitting-a-plane-to-a-set-of-points-in-3d-using-pca"
         {
             float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
@@ -911,6 +923,17 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
                 normvec->points[i].gloss = pabcd(3); // store D of plane
                 normvec->points[i].curvature = 
                 res_last[i] = abs(pd2);
+
+                if ( point_world.reflectance > 0.f && ref_grad_w >= 0.f )
+                {
+                    // get reflectance gradient to surface
+                    V3D ref_grad; // should be in world frame
+                    intvec->points[i].intensity = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, normvec->points[i], ref_grad );
+                    point_selected_int[i] = true;
+                    intvec->points[i].x = ref_grad(0);
+                    intvec->points[i].y = ref_grad(1);
+                    intvec->points[i].z = ref_grad(2);
+                }
             }
         }
     }
@@ -918,16 +941,20 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     /// Accumulate points in laser rep and associated normvecs for all valid points
     // Result are two point clouds: 1st containing points in laser coor-rep, 2nd containing estimated plane normal vecs as points
     effct_feat_num = 0;
-    std::vector<int> valid_pts;
-    valid_pts.reserve(feats_down_size);
+    //std::vector<int> valid_pts;
+    //valid_pts.reserve(feats_down_size);
+    laserCloudOri->reserve(feats_down_size);
+    corr_normvect->reserve(feats_down_size);
+    corr_intvect->reserve(feats_down_size);
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
         {
-            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
-            corr_normvect->points[effct_feat_num] = normvec->points[i];
+            laserCloudOri->points.emplace_back(feats_down_body->points[i]);
+            corr_normvect->points.emplace_back(normvec->points[i]);
+            corr_intvect->points.emplace_back(intvec->points[i]);
             total_residual += res_last[i];
-            valid_pts.emplace_back(i);
+            //valid_pts.emplace_back(i);
             ++effct_feat_num;
         }
     }
@@ -946,16 +973,15 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     /*** Computation of Measurment Jacobian matrix H and measurents vector ***/
     size_t num_residuals = effct_feat_num*2;
     ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
-    ekfom_data.h.resize(num_residuals);
+    //ekfom_data.h.resize(num_residuals);
+    ekfom_data.h = MatrixXd::Zero(num_residuals,1);
 
     /** Create one error point for point_to_plane and one error point for intensity gradient point */
-#ifdef MP_EN
-    omp_set_num_threads(MP_PROC_NUM);
-    #pragma omp parallel for
-#endif
-    for (int i = 0; i < effct_feat_num; ++i)
+    int num_from_intensity = 0;
+    int res_it = 0;
+    for (int i = 0; i < effct_feat_num; ++i, ++res_it)
     {
-        const int res_it = 2*i;
+        //const int res_it = 2*i;
         /// Use point in laser coords
         const PointType &laser_p  = laserCloudOri->points[i];
         V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
@@ -1000,14 +1026,15 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         ekfom_data.h(res_it) = -norm_p.intensity;
 
         /** Add Intensity gradient to kalman state. */
-        const int & pt_it = valid_pts[i];
-        const PointType &point_world = feats_down_world->points[pt_it];
-        const PointVector& points_near = Nearest_Points[pt_it];
-        if ( point_world.reflectance > 0.f && ref_grad_w >= 0.f )
+        //const int & pt_it = valid_pts[i];
+        //const PointType &point_world = feats_down_world->points[pt_it];
+        //const PointVector& points_near = Nearest_Points[pt_it];
+        if ( point_selected_int[i] && ref_grad_w > 0.f )
         {
+            const PointType &int_p = corr_intvect->points[i];
             // get reflectance gradient to surface
-            V3D ref_grad; // should be in world frame
-            double int_error = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, norm_p, ref_grad );
+            V3D ref_grad ( int_p.x, int_p.y, int_p.z ); // should be in world frame
+            double int_error = int_p.intensity;
             // weight them
             ref_grad *= ref_grad_w;
             int_error *= ref_grad_w;
@@ -1024,45 +1051,82 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             ekfom_data.h_x.template block<1, 12>(res_it+1,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
             ekfom_data.h(res_it+1) = -int_error;
 
-            constexpr bool print_info = false;
             if constexpr ( print_info )
             {
                 if ( (res_it & 1023) == 0 )
                 {
-                    ROS_INFO_STREAM("ri: " << res_it << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h(res_it+1) << "\n"
+                    ROS_INFO_STREAM("ri: " << res_it << " w: " << ref_grad_w << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h(res_it+1) << "\n"
                                     << (ekfom_data.h_x.template block<2, 6>(res_it,0)) );
                 }
             }
-        } else {
-            ekfom_data.h_x.template block<1, 12>(res_it+1,0).setZero();
-            ekfom_data.h(res_it+1) = 0.;
+            ++num_from_intensity;
+            ++res_it;
         }
-    }
+//        const int & pt_it = valid_pts[i];
+//        const PointType &point_world = feats_down_world->points[pt_it];
+//        const PointVector& points_near = Nearest_Points[pt_it];
+//        if ( point_world.reflectance > 0.f && ref_grad_w >= 0.f )
+//        {
+//            // get reflectance gradient to surface
+//            V3D ref_grad; // should be in world frame
+//            double int_error = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, norm_p, ref_grad );
+//            // weight them
+//            ref_grad *= ref_grad_w;
+//            int_error *= ref_grad_w;
 
-    if constexpr ( false )
-    {
-        double grad_mean = 0.0, grad_var = 0.0;
-        double int_mean = 0.0, int_var = 0.0;
-        size_t res_it = 0;
-        for (int i = 0; i < effct_feat_num; i++)
-        {
-            grad_mean += ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm();
-            int_mean += ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm();
-            res_it += 2;
-        }
-        grad_mean /= effct_feat_num;
-        int_mean /= (effct_feat_num*ref_grad_w);
-        res_it = 0;
-        for (int i = 0; i < effct_feat_num; i++)
-        {
-            grad_var += std::pow(grad_mean -ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm(), 2);
-            int_var += std::pow(int_mean -ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm(), 2);
-            res_it += 2;
-        }
-        grad_var /= effct_feat_num;
-        int_var /= effct_feat_num;
-        (*grad_file) << grad_mean << ", " << grad_var << ", " << int_mean << ", " << int_var << "\n";
+//            // all points in world, normal too.
+//            // ref_g' * ( I, R_wi * [-p_i]_x )
+
+//            // Transform intensity grad: World -> IMU coords
+//            V3D C_ref(s.rot.conjugate() * ref_grad); // Conjugates quaternion s.rot -> rotate world frame grad vec to imu frame
+//            V3D A_ref(point_crossmat * C_ref);
+
+
+//            /** Add vector to state. */
+//            ekfom_data.h_x.template block<1, 12>(res_it+1,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+//            ekfom_data.h(res_it+1) = -int_error;
+
+//            constexpr bool print_info = false;
+//            if constexpr ( print_info )
+//            {
+//                if ( (res_it & 1023) == 0 )
+//                {
+//                    ROS_INFO_STREAM("ri: " << res_it << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h(res_it+1) << "\n"
+//                                    << (ekfom_data.h_x.template block<2, 6>(res_it,0)) );
+//                }
+//            }
+//        }
     }
+    ekfom_data.h_x.conservativeResize(res_it,12);
+    ekfom_data.h.conservativeResize(res_it,1);
+
+    if constexpr ( print_info )
+    ROS_INFO_STREAM("int: " << num_from_intensity << " d: " << effct_feat_num << " H: " << ekfom_data.h_x.rows() << " x " << ekfom_data.h_x.cols() << " h: " << ekfom_data.h.rows() << " " << ekfom_data.h.cols()  );
+
+//    if constexpr ( false )
+//    {
+//        double grad_mean = 0.0, grad_var = 0.0;
+//        double int_mean = 0.0, int_var = 0.0;
+//        size_t res_it = 0;
+//        for (int i = 0; i < effct_feat_num; i++)
+//        {
+//            grad_mean += ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm();
+//            int_mean += ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm();
+//            res_it += 2;
+//        }
+//        grad_mean /= effct_feat_num;
+//        int_mean /= (effct_feat_num*ref_grad_w);
+//        res_it = 0;
+//        for (int i = 0; i < effct_feat_num; i++)
+//        {
+//            grad_var += std::pow(grad_mean -ekfom_data.h(res_it)*ekfom_data.h_x.block<1, 3>(res_it,0).norm(), 2);
+//            int_var += std::pow(int_mean -ekfom_data.h(res_it+1)*ekfom_data.h_x.block<1, 3>(res_it+1,0).norm(), 2);
+//            res_it += 2;
+//        }
+//        grad_var /= effct_feat_num;
+//        int_var /= effct_feat_num;
+//        (*grad_file) << grad_mean << ", " << grad_var << ", " << int_mean << ", " << int_var << "\n";
+//    }
 
     solve_time += omp_get_wtime() - solve_start_;
 }
@@ -1132,15 +1196,17 @@ int main(int argc, char** argv)
     sstr <<"_pcd.txt";
     tum_comp_fname = sstr.str();
     grad_out_fname = grad_sstr.str();
+    if constexpr( false )
     grad_file = std::make_shared<std::ofstream>(grad_out_fname);
     //ROS_WARN_STREAM( "Filter: w=" << filter_input->getParams().w_filter_size << ", h=" << filter_input->getParams().h_filter_size );
 
+    const double ref_grad_w_orig = ref_grad_w;
     if ( ref_grad_w > 0. )
     {
         ref_grad_w = std::sqrt( ref_grad_w );
         //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
-    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w );
+    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << tum_out_fname);
     ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
     ROS_WARN_STREAM( "use_channel = " << use_channel );
@@ -1196,6 +1262,7 @@ int main(int argc, char** argv)
     downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
     memset(point_selected_surf, true, sizeof(point_selected_surf));
+    memset(point_selected_int, false, sizeof(point_selected_int));
     memset(res_last, -1000.0f, sizeof(res_last));
 
     Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(extrinT);
@@ -1217,6 +1284,8 @@ int main(int argc, char** argv)
     fp = fopen(pos_log_dir.c_str(),"w");
 
     ofstream fout_pre, fout_out, fout_dbg;
+    if (runtime_pos_log)
+    {
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
     fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
     fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),ios::out);
@@ -1224,6 +1293,7 @@ int main(int argc, char** argv)
         cout << "~~~~"<<ROOT_DIR<<" file opened" << endl;
     else
         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
+    }
 
     /*** ROS subscribe initialization ***/
     ROS_INFO_STREAM( "Subscribing:\n" << "  lidar_topic=" << lid_topic << "\n  imu_topic=" << imu_topic << std::endl );
@@ -1317,15 +1387,14 @@ int main(int argc, char** argv)
                     if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
                     if ( maxValR < feats_undistort->points[i].reflectance ) maxValR = feats_undistort->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_undistort->size() << " pf: " <<  p_pre->point_filter_num << std::endl;
+                ROS_INFO_STREAM_THROTTLE(1,"dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_undistort->size() << " pf: " <<  p_pre->point_filter_num);
                 maxValR = 0; maxValI = 0;
                 for (int i = 0; i < feats_down_body->size(); i++)
                 {
                     if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
                     if ( maxValR < feats_down_body->points[i].reflectance ) maxValR = feats_down_body->points[i].reflectance;
                 }
-                std::cout << "dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_down_body->size() << " pf: " <<  p_pre->point_filter_num << std::endl;
-                maxValR = 0; maxValI = 0;
+                ROS_INFO_STREAM_THROTTLE(1,"dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_down_body->size() << " pf: " <<  p_pre->point_filter_num);
             }
 
 
@@ -1359,13 +1428,15 @@ int main(int argc, char** argv)
             }
 
             normvec->resize(feats_down_size);
+            intvec->resize(feats_down_size);
             feats_down_world->resize(feats_down_size);
 
             V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
-            fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
-            <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
+            if (runtime_pos_log)
+                fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
+                <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            //if(0) // If you need to see map point, change to "if(1)"
+            if ( pubLaserCloudMap.getNumSubscribers() > 0 ) //if(0) // If you need to see map point, change to "if(1)"
             {
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
@@ -1415,11 +1486,11 @@ int main(int argc, char** argv)
 
             /******* Publish points *******/
             //std::cout << "publish?: " << ( scan_pub_en || pcd_save_en || store_compensated_ ) << std::endl;
-            if (path_en)                         publish_path(pubPath);
+            if (path_en) publish_path(pubPath);
             if (scan_pub_en || pcd_save_en || (store_compensated_ && dist_passed) )  publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             // publish_effect_world(pubLaserCloudEffect);
-             publish_map(pubLaserCloudMap);
+            if ( pubLaserCloudMap.getNumSubscribers() > 0 ) publish_map(pubLaserCloudMap);
 
             /*** Debug variables ***/
             if (runtime_pos_log)
@@ -1468,11 +1539,10 @@ int main(int argc, char** argv)
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
     }
 
-    fout_out.close();
-    fout_pre.close();
-
     if (runtime_pos_log)
     {
+        fout_out.close();
+        fout_pre.close();
         vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;
         FILE *fp2;
         string log_dir = root_dir + "/Log/fast_lio_time_log.csv";
