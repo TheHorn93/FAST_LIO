@@ -60,6 +60,7 @@
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
+#define POINT_INT_COV       (0.001)
 #define MAXN                (720000)
 #define PUBFRAME_PERIOD     (20)
 
@@ -970,9 +971,11 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     double solve_start_  = omp_get_wtime();
 
     /*** Computation of Measurment Jacobian matrix H and measurents vector ***/
-    size_t num_residuals = effct_feat_num*2;
+    size_t num_residuals = effct_feat_num; //*2;
     ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
     ekfom_data.h = MatrixXd::Zero(num_residuals,1);
+    ekfom_data.h_x_int = MatrixXd::Zero(effct_feat_num, 12); //23
+    ekfom_data.h_int = MatrixXd::Zero(effct_feat_num,1);
 
     /** Create one error point for point_to_plane and one error point for intensity gradient point */
     int num_from_intensity = 0;
@@ -1029,10 +1032,9 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             const PointType &int_p = corr_intvect->points[i];
             // get reflectance gradient to surface
             V3D ref_grad ( int_p.x, int_p.y, int_p.z ); // should be in world frame
-            double int_error = int_p.intensity;
+
             // weight them
             ref_grad *= ref_grad_w;
-            int_error *= ref_grad_w;
 
             // all points in world, normal too.
             // ref_g' * ( I, R_wi * [-p_i]_x )
@@ -1043,24 +1045,31 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
 
             /** Add vector to state. */
-            ekfom_data.h_x.template block<1, 12>(res_it+1,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            ekfom_data.h(res_it+1) = -int_error;
+            ekfom_data.h_x_int.template block<1, 12>(num_from_intensity,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            ekfom_data.h_int(num_from_intensity) = ref_grad_w * int_p.intensity;
 
             if constexpr ( print_info )
             {
                 if ( (res_it & 1023) == 0 )
                 {
-                    ROS_INFO_STREAM("ri: " << res_it << " w: " << ref_grad_w << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h(res_it+1) << "\n"
-                                    << (ekfom_data.h_x.template block<2, 6>(res_it,0)) );
+                    ROS_INFO_STREAM("ri: " << res_it << " w: " << ref_grad_w << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h_int(num_from_intensity) << "\n"
+                                    << (ekfom_data.h_x.template block<1, 6>(res_it,0))  << "\n" << (ekfom_data.h_x_int.template block<1, 6>(num_from_intensity,0)));
                 }
             }
             ++num_from_intensity;
-            ++res_it;
+//            ++res_it;
         }
     }
-    ekfom_data.h_x.conservativeResize(res_it,12);
-    ekfom_data.h.conservativeResize(res_it,1);
-
+    if ( effct_feat_num != res_it )
+    {
+        ekfom_data.h_x.conservativeResize(res_it,12);
+        ekfom_data.h.conservativeResize(res_it,1);
+    }
+    if ( effct_feat_num != num_from_intensity )
+    {
+        ekfom_data.h_x_int.conservativeResize(num_from_intensity,12);
+        ekfom_data.h_int.conservativeResize(num_from_intensity,1);
+    }
     if constexpr ( print_info )
     ROS_INFO_STREAM_THROTTLE(1,"int: " << num_from_intensity << " d: " << effct_feat_num << " H: " << ekfom_data.h_x.rows() << " x " << ekfom_data.h_x.cols() << " h: " << ekfom_data.h.rows() << " " << ekfom_data.h.cols()  );
     solve_time += omp_get_wtime() - solve_start_;
@@ -1139,7 +1148,7 @@ int main(int argc, char** argv)
     const double ref_grad_w_orig = ref_grad_w;
     if ( ref_grad_w > 0. )
     {
-        ref_grad_w = std::sqrt( ref_grad_w );
+        //ref_grad_w = std::sqrt( ref_grad_w );
         use_reflec_enabled = true;
         //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
@@ -1391,7 +1400,7 @@ int main(int argc, char** argv)
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
-            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, POINT_INT_COV, solve_H_time);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;

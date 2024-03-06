@@ -153,21 +153,10 @@ Eigen::Vector2d IrregularGrid::getIntensityGradOnPlaneTPS( const Eigen::Vector2d
 //    const double dy = v2 - (c0*(2*d0y - 2*uy))/2 - (c1*(2*d1y - 2*uy))/2 - (c2*(2*d2y - 2*uy))/2 - (c3*(2*d3y - 2*uy))/2 - (c4*(2*d4y - 2*uy))/2
 //            - c0*log(r0)*(2*d0y - 2*uy) - c1*log(r1)*(2*d1y - 2*uy) - c2*log(r2)*(2*d2y - 2*uy) - c3*log(r3)*(2*d3y - 2*uy) - c4*log(r4)*(2*d4y - 2*uy);
 
-
-
-
-//    const double d0 = diff(0);
-//    const double d1 = diff(1);
-//    const double d2 = diff(2);
-//    const double d3 = diff(3);
-//    const double d4 = diff(4);
-
     const double dx = v(0) - c.dot(diff.row(0)) - 2 * c_logr.dot(diff.row(0));
     const double dy = v(1) - c.dot(diff.row(1)) - 2 * c_logr.dot(diff.row(1));
     return Eigen::Vector2d(dx,dy);
 }
-
-
 
 bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
 {
