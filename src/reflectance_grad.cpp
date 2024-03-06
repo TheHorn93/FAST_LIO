@@ -83,9 +83,100 @@ Eigen::Vector2d IrregularGrid::getIntensityGradOnPlane( const Eigen::Vector2d& p
     return Eigen::Vector2d(dx,dy);
 }
 
+
+
+Eigen::Matrix<double, 3+NUM_MATCH_POINTS, 1> IrregularGrid::getTPS( const PointVector& pts_near, const Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj )
+{
+    constexpr bool print_info = false; //true;
+    constexpr int num_params = 3+NUM_MATCH_POINTS;
+
+    // Augmented System of Equations
+    Eigen::Matrix<double,num_params,num_params> mat_p = Eigen::Matrix<double,num_params,num_params>::Zero();
+    //mat_p.template topLeftCorner<3,3>().diagonal().setOnes();
+    for ( int i = 0; i < NUM_MATCH_POINTS; ++i)
+    {
+        const Eigen::Vector2d p = pts_near_proj.template block<2,1>(0,i);
+        for ( int j = i+1; j < NUM_MATCH_POINTS; ++j )
+        {
+            const double r2 = (p-pts_near_proj.template block<2,1>(0,j)).squaredNorm();
+            mat_p(i,j) = r2 * 0.5 * log(r2);
+            if ( !std::isfinite(mat_p(i,j)) ) mat_p(i,j) = 0; // case r2=0
+            mat_p(j,i) = mat_p(i,j);
+        }
+    }
+    Eigen::Matrix<double,3,NUM_MATCH_POINTS> pts_a = pts_near_proj;
+    pts_a.template bottomRows<1>().setOnes();
+    mat_p.template bottomLeftCorner<3,NUM_MATCH_POINTS>() = pts_a;
+    mat_p.template topRightCorner<NUM_MATCH_POINTS,3>() = pts_a.transpose();
+
+    Eigen::Matrix<double,num_params,1> vec_z = Eigen::Matrix<double,num_params,1>::Zero();
+    for( size_t p_it=0 ; p_it < NUM_MATCH_POINTS ; ++p_it )
+    {
+        vec_z[p_it] = pts_near[p_it].intensity; // reflectance channel is dropped by the voxelgrid filter..., but we write it into intensity either way...
+    }
+
+    if constexpr ( print_info )
+    {
+        static int cnt = 0;
+        ++cnt;
+        if ( (cnt & 1023) == 0 )
+        {
+            cnt = 0;
+            ROS_INFO_STREAM("p:\n" << pts_near_proj.template topRows<2>());
+            ROS_INFO_STREAM("A:\n" << mat_p << "\nv:" << vec_z.transpose());
+            ROS_INFO_STREAM("cv:" << mat_p.colPivHouseholderQr().solve( vec_z ).transpose());
+        }
+    }
+    return mat_p.colPivHouseholderQr().solve( vec_z );
+}
+
+double IrregularGrid::getIntensityFromPosOnPlaneTPS( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS+3> & lambda, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & dists2, Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr )
+{
+    //c'*(r.^2.*log(r)) + v'*[1;u]
+    //const Eigen::Vector3d u (1, pt_query(0), pt_query(1));
+    c_logr = lambda.template head<NUM_MATCH_POINTS>().array() * (0.5*dists2.array().log()); // log(sqrt(dist2)) == 0.5 * log(dist2)
+    return c_logr.dot(dists2) + lambda.template tail<3>().dot(pt_query.homogeneous());
+}
+
+Eigen::Vector2d IrregularGrid::getIntensityGradOnPlaneTPS( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c, const Eigen::Vector3d & v,
+                                                           const Eigen::Matrix<double,2,NUM_MATCH_POINTS> & diff, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr )
+{
+
+    //r0 = ((d0x - ux)^2 + (d0y - uy)^2)^(1/2)
+    //r1 = ((d1x - ux)^2 + (d1y - uy)^2)^(1/2)
+    //r2 = ((d2x - ux)^2 + (d2y - uy)^2)^(1/2)
+    //r3 = ((d3x - ux)^2 + (d3y - uy)^2)^(1/2)
+    //r4 = ((d4x - ux)^2 + (d4y - uy)^2)^(1/2)
+
+//    const double dx = v1 - (c0*(2*d0x - 2*ux))/2 - (c1*(2*d1x - 2*ux))/2 - (c2*(2*d2x - 2*ux))/2 - (c3*(2*d3x - 2*ux))/2 - (c4*(2*d4x - 2*ux))/2
+//            - c0*log(r0)*(2*d0x - 2*ux) - c1*log(r1)*(2*d1x - 2*ux) - c2*log(r2)*(2*d2x - 2*ux) - c3*log(r3)*(2*d3x - 2*ux) - c4*log(r4)*(2*d4x - 2*ux);
+//    const double dy = v2 - (c0*(2*d0y - 2*uy))/2 - (c1*(2*d1y - 2*uy))/2 - (c2*(2*d2y - 2*uy))/2 - (c3*(2*d3y - 2*uy))/2 - (c4*(2*d4y - 2*uy))/2
+//            - c0*log(r0)*(2*d0y - 2*uy) - c1*log(r1)*(2*d1y - 2*uy) - c2*log(r2)*(2*d2y - 2*uy) - c3*log(r3)*(2*d3y - 2*uy) - c4*log(r4)*(2*d4y - 2*uy);
+
+
+
+
+//    const double d0 = diff(0);
+//    const double d1 = diff(1);
+//    const double d2 = diff(2);
+//    const double d3 = diff(3);
+//    const double d4 = diff(4);
+
+    const double dx = v(0) - c.dot(diff.row(0)) - 2 * c_logr.dot(diff.row(0));
+    const double dy = v(1) - c.dot(diff.row(1)) - 2 * c_logr.dot(diff.row(1));
+    return Eigen::Vector2d(dx,dy);
+}
+
+
+
 bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
 {
+#define USE_TPS
+#ifdef USE_TPS
     constexpr bool print_info = false;
+#else
+    constexpr bool print_info = false;
+#endif
     const Eigen::Vector3d normal ( norm_p.x, norm_p.y, norm_p.z );
     //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl;
     Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
@@ -93,9 +184,6 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
     Eigen::Vector3d pt_mean;
     const Eigen::Vector2d pt_pos_rot = transformTo2DPlane( pt, pts_near, normal, norm_p.intensity, rot_quad, pts_near_proj, pt_mean ).template head<2>(); // should be on plane ( of UnitZ ), norm_p.intensity is the distance of plane equation
     //DEBUG_OUT( "qpt=" << pt_pos_rot << std::endl << std::endl );
-
-    const Eigen::Matrix<double, 6, 1> lambda = getPolynomial( pts_near, pts_near_proj );
-    const double int_at_pos = getIntensityFromPosOnPlane( pt_pos_rot, lambda );
 
     double min_intensity = pts_near[0].intensity;
     double max_intensity = pts_near[0].intensity;
@@ -107,6 +195,23 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
         if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
+
+#ifdef USE_TPS
+
+    const Eigen::Matrix<double,3+NUM_MATCH_POINTS, 1> lambda = getTPS( pts_near, pts_near_proj );
+
+    const Eigen::Matrix<double,2,NUM_MATCH_POINTS> diffs = pts_near_proj.template topRows<2>().colwise() - pt_pos_rot;
+    const Eigen::Matrix<double,1,NUM_MATCH_POINTS> dists2 = diffs.colwise().squaredNorm();
+
+    Eigen::Matrix<double,1,NUM_MATCH_POINTS> c_logr;
+    const double int_at_pos = getIntensityFromPosOnPlaneTPS( pt_pos_rot, lambda, dists2, c_logr );
+
+
+
+#else
+    const Eigen::Matrix<double, 6, 1> lambda = getPolynomial( pts_near, pts_near_proj );
+    const double int_at_pos = getIntensityFromPosOnPlane( pt_pos_rot, lambda );
+#endif
 
     if ( further_away || min_intensity > int_at_pos || int_at_pos > max_intensity )
         return false;
@@ -129,8 +234,11 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
                          (pts_near_proj.template topRows<2>().colwise()-pt_pos_rot));
         return false;
     }
-
+#ifdef USE_TPS
+    const Eigen::Vector2d grad_on_plane = getIntensityGradOnPlaneTPS( pt_pos_rot, lambda.template head<NUM_MATCH_POINTS>(), lambda.template tail<3>(), diffs, c_logr ); // [dx,dy] of plane...
+#else
     const Eigen::Vector2d grad_on_plane = getIntensityGradOnPlane( pt_pos_rot, lambda ); // [dx,dy] of plane...
+#endif
     const Eigen::Matrix3d rot_to_plane = rot_quad.matrix();
     //const Eigen::Vector3d grad_in_world = rot_quad.conjugate() * grad_on_plane;
     //grad_out = grad_in_world.transpose() * (Eigen::Matrix3d::Identity() - normal * normal.transpose());

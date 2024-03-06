@@ -24,6 +24,19 @@ public:
   static Eigen::Vector2d getIntensityGradOnPlane( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda );
 
   static bool computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out );
+
+
+
+
+
+  static Eigen::Matrix<double, 3+NUM_MATCH_POINTS, 1> getTPS( const PointVector& pts_near, const Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj );
+
+  static double getIntensityFromPosOnPlaneTPS( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS+3> & lambda, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & dists2, Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr );
+
+  static Eigen::Vector2d getIntensityGradOnPlaneTPS(  const Eigen::Vector2d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c, const Eigen::Vector3d & v,
+                                                      const Eigen::Matrix<double,2,NUM_MATCH_POINTS> & diff, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr );
+
+
 };
 
 }
