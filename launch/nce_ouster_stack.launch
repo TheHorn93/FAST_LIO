@@ -16,7 +16,8 @@
 
     <arg name="use_channel" default="1"/>
     <arg name="model" default="weighted_dasig_poly"/>
-    <arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 0.898667, "w_angle": -0.602007, "w_sigmoid": 4.89747, "w_sigmoid_q": 4.9239, "v_0": 0.32537, "v_1": 0.485697, "v_2": 0.59017, "u_0": 0.270083, "u_1": 0.229198, "u_2": 0.210117, "num_rings": 128}'/> <!-- math med 50s, normals ordered -->
+    <!--arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 0.898667, "w_angle": -0.602007, "w_sigmoid": 4.89747, "w_sigmoid_q": 4.9239, "v_0": 0.32537, "v_1": 0.485697, "v_2": 0.59017, "u_0": 0.270083, "u_1": 0.229198, "u_2": 0.210117, "num_rings": 128}'/--> <!-- math med 50s, normals ordered -->
+    <arg name="params" default='{"type": "reflectivity weighted_dasig_poly", "w_dist": 0.0587125, "w_sigmoid": 6, "w_sigmoid_q": 4.52733, "w_angle": -0.286864, "v_0": 0.333252, "v_1": 1.52472, "v_2": 0.354852, "num_rings": 128}'/> <!-- math med 50s, normals ordered -->
 
     <arg name="grad_w" default="0.0" if="$(arg prepare_for_parameter_estimation)" />
     <arg name="grad_w" default="0.1" unless="$(arg prepare_for_parameter_estimation)" />

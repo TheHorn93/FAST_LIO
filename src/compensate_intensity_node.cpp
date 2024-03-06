@@ -39,7 +39,7 @@ void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointC
 
         if ( cur_pt.intensity <= 1e-6f )
         {
-            //cur_pt = getInvalidPoint();
+            cur_pt = getInvalidPoint();
             cur_pt.intensity = 0;
             cur_pt.reflectivity = 0;
             continue;
@@ -90,7 +90,7 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     Eigen::VectorXf new_ints;
     input_filter->applyFilter( pc_in, new_ints, normals_ptr );
 
-    //new_ints = new_ints.cwiseMin(1.f);
+    new_ints = new_ints.cwiseMin(1.f);
 
     PointCloudType pc_out;
     transferPoints( pc_in, new_ints, pc_out );

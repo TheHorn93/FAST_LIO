@@ -1046,7 +1046,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
             /** Add vector to state. */
             ekfom_data.h_x_int.template block<1, 12>(num_from_intensity,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            ekfom_data.h_int(num_from_intensity) = ref_grad_w * int_p.intensity;
+            ekfom_data.h_int(num_from_intensity) = - ref_grad_w * int_p.intensity;
 
             if constexpr ( print_info )
             {

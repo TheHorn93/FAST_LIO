@@ -120,9 +120,9 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
   normalizeIntensity( pc_in, ints_out );
 
   // TODO: reenable the stuff afterwards...
-  return;
+  //return;
 
-  filterOutlierCloud( pc_in, ints_out );
+  //filterOutlierCloud( pc_in, ints_out );
 
   //ROS_INFO_STREAM( "pts: " << pc_in.points.size() << " " << pc_in.width << " " << pc_in.height );
 
