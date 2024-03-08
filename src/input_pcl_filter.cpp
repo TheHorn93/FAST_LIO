@@ -103,6 +103,7 @@ void PCLFilterBase::initCompensationModel( const std::string& type, const std::s
   {
     compensation::CompensationModelBase* new_model = compensation::getModelFromType( type, cfg_loader );
     m_model = std::unique_ptr<compensation::CompensationModelBase>( new_model ); 
+    ROS_INFO_STREAM(" " << m_model->params().transpose());
   }
   catch( const std::runtime_error& err )
   {
@@ -113,9 +114,17 @@ void PCLFilterBase::initCompensationModel( const std::string& type, const std::s
 
 
 template<class _PtTp, PclFilterChannel _data_channel>
-void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals ) const
+void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::VectorXf & grad_mags, Eigen::Matrix<float,3,Eigen::Dynamic> * normals ) const
 {
-  constexpr bool print_info = false;
+  using PC = PointCloud<ScalarType>;
+  constexpr bool print_info = true;
+
+#ifdef COMP_ONLY
+  const VecX params = this->m_model->params();
+  const bool ignore_invalid_normal = params.size() >= 4 ? std::abs(params[3]) < 1e-4f : false;
+#else
+  const bool ignore_invalid_normal = false;
+#endif
 
   normalizeIntensity( pc_in, ints_out );
 
@@ -134,11 +143,16 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
   Eigen::MatrixXd pose = Eigen::MatrixXd::Zero(7,1);
   pose(3,0) = 1;
   pc_int_cor.poses() = pose;
-  pc_int_cor.precomputeUsingOrdered( this->getParams().height, this->getParams().width, this->getParams().h_filter_size, this->getParams().w_filter_size, this->getParams().num_filter_points );
+  pc_int_cor.precomputeUsingOrdered( this->getParams().height, this->getParams().width, this->getParams().h_filter_size, this->getParams().w_filter_size, this->getParams().num_filter_points, ignore_invalid_normal );
   [[maybe_unused]] const double t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
-  const PointCloud<ScalarType>& pc = pc_int_cor.getPCs()[0];
+  const PC & pc = pc_int_cor.getPCs()[0];
   this->m_model->compensateCloud( pc, pc.sqrd_dists(), pc.cos_angles(), pc.pointPoss(), ints_out );
+
+  Eigen::Matrix<float,1,Eigen::Dynamic> gm_threshd = (pc.data().row(PC::gm_id).array() > 0.1).template cast<int>().template cast<float>();
+  //ROS_INFO_STREAM("gm: " << gm_threshd.sum() << " " << gm_threshd.size());
+  grad_mags = gm_threshd.transpose();
+  //ints_out *= gm_threshd.transpose();
 
   [[maybe_unused]] const double t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
@@ -147,13 +161,13 @@ void PCLFilter<_PtTp, _data_channel>::applyFilter( const PointCloudTp& pc_in, Ei
     *normals = pc.getNormals().template cast<float>();
   }
 
-  if constexpr ( print_info ) ROS_INFO_STREAM_THROTTLE(1,"times... " << t1 << " n: " << (t2-t1) << " cor: " << (t3-t2) << " n: " << this->getParams().num_filter_points);
+  if constexpr ( print_info ) ROS_INFO_STREAM_THROTTLE(1,"times... " << t1 << " n: " << (t2-t1) << " cor: " << (t3-t2) << " n: " << this->getParams().num_filter_points << " i: " << ignore_invalid_normal);
 }
 
 template<class _PtTp, PclFilterChannel _data_channel>
 void PCLFilter<_PtTp, _data_channel>::filterOutlierCloud( const PointCloudTp& pc_in, Eigen::VectorXf & new_int ) const
 {
-    constexpr bool print_info = false;
+    constexpr bool print_info = !false;
     [[maybe_unused]]  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
     [[maybe_unused]] int ct_int_rep = 0;
     [[maybe_unused]] size_t num_valid_pts = 0;

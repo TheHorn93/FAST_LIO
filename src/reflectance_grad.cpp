@@ -156,9 +156,6 @@ Eigen::Vector2d IrregularGrid::getIntensityGradOnPlaneTPS( const Eigen::Vector2d
     return Eigen::Vector2d(dx,dy);
 }
 
-
-
-
 Eigen::Matrix<double, 4+NUM_MATCH_POINTS, 1> IrregularGrid::getTPS3D( const PointVector& pts_near, const Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj )
 {
     constexpr bool print_info = false; //true;
@@ -205,7 +202,7 @@ Eigen::Matrix<double, 4+NUM_MATCH_POINTS, 1> IrregularGrid::getTPS3D( const Poin
     return mat_p.colPivHouseholderQr().solve( vec_z );
 }
 
-double IrregularGrid::getIntensityFromPosOnPlaneTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS+4> & lambda, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & dists2, Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr )
+double IrregularGrid::getIntensityFromPosTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS+4> & lambda, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & dists2, Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr )
 {
     //c'*(r.^2.*log(r)) + v'*[1;u]
     //const Eigen::Vector3d u (1, pt_query(0), pt_query(1));
@@ -213,7 +210,7 @@ double IrregularGrid::getIntensityFromPosOnPlaneTPS3D( const Eigen::Vector3d& pt
     return c_logr.dot(dists2) + lambda.template tail<4>().dot(pt_query.homogeneous());
 }
 
-Eigen::Vector3d IrregularGrid::getIntensityGradOnPlaneTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c, const Eigen::Vector4d & v,
+Eigen::Vector3d IrregularGrid::getIntensityGradTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c, const Eigen::Vector4d & v,
                                                              const Eigen::Matrix<double,3,NUM_MATCH_POINTS> & diff, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr )
 {
 
@@ -250,12 +247,8 @@ Eigen::Vector3d IrregularGrid::transformTo3DPlane( const PointType& pt, const Po
     return projectPtToPlane( pt_pos, anchor_pos, normal ); // get point on plane, rotate to UnitZ ( Eq. \pi(p) = R_n (p-d_o(p)n_o) )
 }
 
-bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+bool IrregularGrid::computeErrorAndGradientPlane3DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
 {
-#define USE_3D_TPS
-#define USE_TPS
-
-#ifdef USE_3D_TPS
     constexpr bool print_info = false;
     const Eigen::Vector3d normal ( norm_p.x, norm_p.y, norm_p.z );
     //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl;
@@ -275,7 +268,7 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
 
-    if ( further_away ) return false;
+    if ( further_away || min_intensity < min_reflectance ) return false;
 
     const Eigen::Matrix<double,4+NUM_MATCH_POINTS, 1> lambda = getTPS3D( pts_near, pts_near_proj );
 
@@ -283,12 +276,12 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
     const Eigen::Matrix<double,1,NUM_MATCH_POINTS> dists2 = diffs.colwise().squaredNorm();
 
     Eigen::Matrix<double,1,NUM_MATCH_POINTS> c_logr;
-    const double int_at_pos = getIntensityFromPosOnPlaneTPS3D( pt_pos_rot, lambda, dists2, c_logr );
+    const double int_at_pos = getIntensityFromPosTPS3D( pt_pos_rot, lambda, dists2, c_logr );
 
     if ( min_intensity > int_at_pos || int_at_pos > max_intensity )
         return false;
 
-    const Eigen::Vector3d grad_on_plane = getIntensityGradOnPlaneTPS3D( pt_pos_rot, lambda.template head<NUM_MATCH_POINTS>(), lambda.template tail<4>(), diffs, c_logr ); // [dx,dy] of plane...
+    const Eigen::Vector3d grad_on_plane = getIntensityGradTPS3D( pt_pos_rot, lambda.template head<NUM_MATCH_POINTS>(), lambda.template tail<4>(), diffs, c_logr ); // [dx,dy] of plane...
 
     if constexpr ( print_info )
     {
@@ -326,6 +319,8 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
     }
 
     grad_out = (grad_on_plane.transpose() * (Eigen::Matrix3d::Identity() - normal * normal.transpose())).transpose();
+//    if ( grad_out.norm() > 0 )
+//        grad_out /= grad_out.norm();
 
     if constexpr ( print_info )
     {
@@ -362,19 +357,14 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
         }
     }
 
-    // why is it with another minus in front on the pc?
-    value = (int_at_pos - pt.reflectance);
-
+    value = int_at_pos - pt.reflectance;
     return true;
+}
 
-
-
-#else
-#ifdef USE_TPS
+bool IrregularGrid::computeErrorAndGradientPlane2DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+{
     constexpr bool print_info = false;
-#else
-    constexpr bool print_info = false;
-#endif
+
     const Eigen::Vector3d normal ( norm_p.x, norm_p.y, norm_p.z );
     //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl;
     Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
@@ -393,8 +383,8 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
         if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
-
-#ifdef USE_TPS
+    if ( further_away || min_intensity < min_reflectance )
+        return false;
 
     const Eigen::Matrix<double,3+NUM_MATCH_POINTS, 1> lambda = getTPS( pts_near, pts_near_proj );
 
@@ -404,14 +394,7 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
     Eigen::Matrix<double,1,NUM_MATCH_POINTS> c_logr;
     const double int_at_pos = getIntensityFromPosOnPlaneTPS( pt_pos_rot, lambda, dists2, c_logr );
 
-
-
-#else
-    const Eigen::Matrix<double, 6, 1> lambda = getPolynomial( pts_near, pts_near_proj );
-    const double int_at_pos = getIntensityFromPosOnPlane( pt_pos_rot, lambda );
-#endif
-
-    if ( further_away || min_intensity > int_at_pos || int_at_pos > max_intensity )
+    if (  min_intensity > int_at_pos || int_at_pos > max_intensity )
         return false;
 
     if constexpr ( false )
@@ -432,11 +415,7 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
                          (pts_near_proj.template topRows<2>().colwise()-pt_pos_rot));
         return false;
     }
-#ifdef USE_TPS
     const Eigen::Vector2d grad_on_plane = getIntensityGradOnPlaneTPS( pt_pos_rot, lambda.template head<NUM_MATCH_POINTS>(), lambda.template tail<3>(), diffs, c_logr ); // [dx,dy] of plane...
-#else
-    const Eigen::Vector2d grad_on_plane = getIntensityGradOnPlane( pt_pos_rot, lambda ); // [dx,dy] of plane...
-#endif
     const Eigen::Matrix3d rot_to_plane = rot_quad.matrix();
     //const Eigen::Vector3d grad_in_world = rot_quad.conjugate() * grad_on_plane;
     //grad_out = grad_in_world.transpose() * (Eigen::Matrix3d::Identity() - normal * normal.transpose());
@@ -483,10 +462,196 @@ bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVec
     }
 
     // why is it with another minus in front on the pc?
-    value = (int_at_pos - pt.reflectance);
+    value = int_at_pos - pt.reflectance;
 
     return true;
-#endif
+}
+
+bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+{
+
+    constexpr bool print_info = false;
+    const Eigen::Vector3d normal ( norm_p.x, norm_p.y, norm_p.z );
+    //std::cout << pt.reflectance << ": " << pt.x << ", " << pt.y << ", " << pt.z << std::endl;
+    Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_proj;
+    const Eigen::Quaterniond rot_quad = getRotationToPlane( normal ); // normal in world coords, rotate normal to UnitZ
+    Eigen::Vector3d pt_mean;
+    const Eigen::Vector2d pt_pos_rot = transformTo2DPlane( pt, pts_near, normal, norm_p.intensity, rot_quad, pts_near_proj, pt_mean ).template head<2>(); // should be on plane ( of UnitZ ), norm_p.intensity is the distance of plane equation
+    //DEBUG_OUT( "qpt=" << pt_pos_rot << std::endl << std::endl );
+
+    double min_intensity = pts_near[0].intensity;
+    double max_intensity = pts_near[0].intensity;
+    bool further_away = true;
+    const double dist = (pt_pos_rot-pt_mean.template head<2>()).squaredNorm();
+    for ( int i = 0; i < pts_near.size(); ++i)
+    {
+        further_away &= (pts_near_proj.col(i).template head<2>() - pt_mean.template head<2>()).squaredNorm() > dist;
+        if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
+        if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
+    }
+    if ( further_away || min_intensity < min_reflectance )
+        return false;
+
+    const Eigen::Matrix<double, 6, 1> lambda = getPolynomial( pts_near, pts_near_proj );
+    const double int_at_pos = getIntensityFromPosOnPlane( pt_pos_rot, lambda );
+
+    if ( min_intensity > int_at_pos || int_at_pos > max_intensity )
+        return false;
+
+    if constexpr ( false )
+    if ( int_at_pos < 0 || (std::abs(int_at_pos - pt.reflectance) < 1e-7 ) ) // projection is likely further away than the rest of the points
+    {
+        Eigen::Matrix<double, NUM_MATCH_POINTS, 1> intensities;
+        for ( int i = 0; i < pts_near.size(); ++i )
+            intensities(i) = pts_near[i].intensity;
+        Eigen::Vector2d pt_query = pt_pos_rot;
+        Eigen::Matrix<double, 6, 1> pt_params;
+        pt_params[0] = pt_query[0] *pt_query[0]; // x^2
+        pt_params[1] = pt_query[1] *pt_query[1]; // y^2
+        pt_params[2] = pt_query[0] *pt_query[1]; // x*y
+        pt_params[3] = pt_query[0]; // x
+        pt_params[4] = pt_query[1]; // y
+        pt_params[5] = 1;
+        ROS_ERROR_STREAM("lambda: " << lambda.transpose() << " p: " << pt_params.transpose() << " i: " << int_at_pos << " /  " << (lambda.dot(pt_params))  << " v: " << intensities.transpose()<< " kp: " << pt_pos_rot.transpose() << " kp:\n" << pts_near_proj<< "\nd:\n" <<
+                         (pts_near_proj.template topRows<2>().colwise()-pt_pos_rot));
+        return false;
+    }
+    const Eigen::Vector2d grad_on_plane = getIntensityGradOnPlane( pt_pos_rot, lambda ); // [dx,dy] of plane...
+    const Eigen::Matrix3d rot_to_plane = rot_quad.matrix();
+    //const Eigen::Vector3d grad_in_world = rot_quad.conjugate() * grad_on_plane;
+    //grad_out = grad_in_world.transpose() * (Eigen::Matrix3d::Identity() - normal * normal.transpose());
+    grad_out = (grad_on_plane.transpose() * rot_to_plane.template topRows<2>() * (Eigen::Matrix3d::Identity() - normal * normal.transpose())).transpose();
+    //  const double grad_norm = grad_out.norm();
+    //  if( grad_norm > 0.0 )
+    //    grad_out /= grad_norm;
+
+    //DEBUG_OUT( std::endl << "Grad_in_Plane:" << (grad_on_plane * (int_at_pos-pt.reflectance)) << std::endl << "norm=" << grad_on_plane.norm() );
+
+    if constexpr ( print_info )
+    {
+        static int cnt = 0;
+        ++cnt;
+        if ( (cnt & 1023) == 0 )
+        {
+            cnt = 0;
+            Eigen::Matrix<double, NUM_MATCH_POINTS, 1> intensities;
+            for ( int i = 0; i < pts_near.size(); ++i )
+                intensities(i) = pts_near[i].intensity;
+            ROS_INFO_STREAM("A: " << int_at_pos << " int: " << pt.reflectance << " i: " << intensities.transpose() << " l: " << lambda.transpose() << " p: " << pt_pos_rot.transpose() << " g: " << grad_out.transpose());
+            //          const Eigen::Vector3d closer_pt = pt_pos_rot - pts_near_proj.col(0);
+            //          const Eigen::Matrix<double, 3, NUM_MATCH_POINTS> closer_pts = (pts_near_proj.colwise() - pts_near_proj.col(0));
+            //          const Eigen::Matrix<double, mat_p_size, 1> other_lambda = getPolynomial( pts_near, closer_pts );
+            //          Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_xyz, pts_near_xyz_rot;
+            //          Eigen::Matrix<double, NUM_MATCH_POINTS, 1> intensities;
+            //          Eigen::Matrix<double, NUM_MATCH_POINTS, 1> dists;//reflectances,
+            //          for ( int i = 0; i < pts_near.size(); ++i )
+            //          {
+            //              pts_near_xyz.col(i) << pts_near[i].x, pts_near[i].y, pts_near[i].z;
+            //              pts_near_xyz_rot.col(i) = rot_quad * pts_near_xyz.col(i);
+            //reflectances(i) = pts_near[i].reflectance;
+            //              intensities(i) = pts_near[i].intensity;
+            //              dists(i) = pts_near_xyz.col(i).dot(normal) + norm_p.gloss; // gloss now has D of plane inside, while intensity contains the pt's distance to plane...
+            //          }
+            //          const Eigen::Vector3d pts_near_mean = pts_near_xyz.rowwise().mean();
+            //          const double d = pts_near_mean.dot(normal);
+            //          ROS_INFO_STREAM("pts:\n" << pts_near_xyz << "\nrotated:\n" << pts_near_xyz_rot << "\n pm: " << pts_near_mean.transpose() << " d: " << d << " diff: " << (d+norm_p.gloss) << " D: " << norm_p.intensity << "\ndn:" << dists.transpose() );
+            //          ROS_INFO_STREAM("pts_proj: " << pt_pos_rot.transpose() << " near: \n" << pts_near_proj << " \n " << closer_pts);
+            //          ROS_INFO_STREAM("A: " << int_at_pos << " ( "  << getIntensityFromPosOnPlane( closer_pt, other_lambda.head<6>() ) << " ) int: " << pt.reflectance //<< " m: " << reflectances.transpose()
+            //                          << " i: " << intensities.transpose() << " g: " << grad_out.transpose() << " gn: "<< grad_norm
+            //                          << "\nL: " << lambda.transpose() << " o: " << (other_lambda.template head<6>()).transpose()  );
+        }
+    }
+
+    value = int_at_pos - pt.reflectance;
+    return true;
+}
+
+bool IrregularGrid::computeErrorAndGradient3D( const PointType& pt, const PointVector& pts_near, double & value, Eigen::Vector3d& grad_out )
+{
+
+    constexpr bool print_info = false;
+    const Eigen::Vector3d pt_3d( pt.x, pt.y, pt.z );
+
+    Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_3d;
+    for ( int i = 0; i < pts_near.size(); ++i)
+    {
+        pts_near_3d.col(i) << pts_near[i].x, pts_near[i].y, pts_near[i].z;
+    }
+
+    const Eigen::Vector3d pt_mean = pts_near_3d.rowwise().mean();
+
+    double min_intensity = pts_near[0].intensity;
+    double max_intensity = pts_near[0].intensity;
+    //const double dist = (pt_pos_rot-pt_mean).squaredNorm();
+    for ( int i = 0; i < pts_near.size(); ++i )
+    {
+        //further_away &= (pts_near_proj.col(i) - pt_mean).squaredNorm() > dist;
+        if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
+        if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
+    }
+    if ( //further_away ||
+         min_intensity < min_reflectance )
+        return false;
+
+    const Eigen::Matrix<double,4+NUM_MATCH_POINTS, 1> lambda = getTPS3D( pts_near, pts_near_3d );
+
+    const Eigen::Matrix<double,3,NUM_MATCH_POINTS> diffs = pts_near_3d.colwise() - pt_3d;
+    const Eigen::Matrix<double,1,NUM_MATCH_POINTS> dists2 = diffs.colwise().squaredNorm();
+
+    Eigen::Matrix<double,1,NUM_MATCH_POINTS> c_logr;
+    const double int_at_pos = getIntensityFromPosTPS3D( pt_3d, lambda, dists2, c_logr );
+
+    if ( (min_intensity*0.9) > int_at_pos || int_at_pos > (1.1*max_intensity) || min_intensity < min_reflectance )
+        return false;
+
+    const Eigen::Vector3d grad_in_3d = getIntensityGradTPS3D( pt_3d, lambda.template head<NUM_MATCH_POINTS>(), lambda.template tail<4>(), diffs, c_logr ); // [dx,dy] of plane...
+
+    if ( !grad_in_3d.allFinite() )
+    {
+        ROS_ERROR_STREAM("a: " << grad_in_3d.transpose() << " l: " << lambda.transpose());
+    }
+
+    grad_out = grad_in_3d;
+    //grad_out = (grad_on_plane.transpose() * (Eigen::Matrix3d::Identity() - normal * normal.transpose())).transpose();
+//    if ( grad_out.norm() > 0 )
+//        grad_out /= grad_out.norm();
+
+    if constexpr ( print_info )
+    {
+        static int cnt = 0;
+        ++cnt;
+        if ( (cnt & 1023) == 0 )
+        {
+            cnt = 0;
+            Eigen::Matrix<double, NUM_MATCH_POINTS, 1> intensities;
+            for ( int i = 0; i < pts_near.size(); ++i )
+                intensities(i) = pts_near[i].intensity;
+            ROS_INFO_STREAM("A: " << int_at_pos << " int: " << pt.reflectance << " i: " << intensities.transpose() << " l: " << lambda.transpose() << " p: " << pt_3d.transpose() << " g: " << grad_out.transpose());
+            //          const Eigen::Vector3d closer_pt = pt_pos_rot - pts_near_proj.col(0);
+            //          const Eigen::Matrix<double, 3, NUM_MATCH_POINTS> closer_pts = (pts_near_proj.colwise() - pts_near_proj.col(0));
+            //          const Eigen::Matrix<double, mat_p_size, 1> other_lambda = getPolynomial( pts_near, closer_pts );
+            //          Eigen::Matrix<double, 3, NUM_MATCH_POINTS> pts_near_xyz, pts_near_xyz_rot;
+            //          Eigen::Matrix<double, NUM_MATCH_POINTS, 1> intensities;
+            //          Eigen::Matrix<double, NUM_MATCH_POINTS, 1> dists;//reflectances,
+            //          for ( int i = 0; i < pts_near.size(); ++i )
+            //          {
+            //              pts_near_xyz.col(i) << pts_near[i].x, pts_near[i].y, pts_near[i].z;
+            //              pts_near_xyz_rot.col(i) = rot_quad * pts_near_xyz.col(i);
+            //reflectances(i) = pts_near[i].reflectance;
+            //              intensities(i) = pts_near[i].intensity;
+            //              dists(i) = pts_near_xyz.col(i).dot(normal) + norm_p.gloss; // gloss now has D of plane inside, while intensity contains the pt's distance to plane...
+            //          }
+            //          const Eigen::Vector3d pts_near_mean = pts_near_xyz.rowwise().mean();
+            //          const double d = pts_near_mean.dot(normal);
+            //          ROS_INFO_STREAM("pts:\n" << pts_near_xyz << "\nrotated:\n" << pts_near_xyz_rot << "\n pm: " << pts_near_mean.transpose() << " d: " << d << " diff: " << (d+norm_p.gloss) << " D: " << norm_p.intensity << "\ndn:" << dists.transpose() );
+            //          ROS_INFO_STREAM("pts_proj: " << pt_pos_rot.transpose() << " near: \n" << pts_near_proj << " \n " << closer_pts);
+            //          ROS_INFO_STREAM("A: " << int_at_pos << " ( "  << getIntensityFromPosOnPlane( closer_pt, other_lambda.head<6>() ) << " ) int: " << pt.reflectance //<< " m: " << reflectances.transpose()
+            //                          << " i: " << intensities.transpose() << " g: " << grad_out.transpose() << " gn: "<< grad_norm
+            //                          << "\nL: " << lambda.transpose() << " o: " << (other_lambda.template head<6>()).transpose()  );
+        }
+    }
+    value = int_at_pos - pt.reflectance;
+    return true;
 }
 
 }

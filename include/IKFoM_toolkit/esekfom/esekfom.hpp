@@ -1727,14 +1727,13 @@ public:
                                 Eigen::Matrix<scalar_type, 12, 12> HTH = h_x_.transpose() * h_x_;
 
                                 //ROS_INFO_STREAM("H:\n" << HTH << "\nH1:\n" << (h_x_.topRows(dof_dist).transpose() * h_x_.topRows(dof_dist)) << "\nH2:\n" << (h_x_.bottomRows(dof_int).transpose() * h_x_.bottomRows(dof_int)));
-                                //ROS_INFO_STREAM("hi:\n" << (h_x_.transpose() * h_).transpose() << "\nh1:\n" << (h_x_.topRows(dof_dist).transpose() * h_.head(dof_dist)).transpose() << "\nh2:\n" << (h_x_.bottomRows(dof_int).transpose() * h_.tail(dof_int)).transpose());
+                                //ROS_INFO_STREAM_THROTTLE(1,"hi:\n" << (h_x_.transpose() * h_).transpose() << "\nh1:\n" << (h_x_.topRows(dof_dist).transpose() * h_.head(dof_dist)).transpose() << "\nh2:\n" << (h_x_.bottomRows(dof_int).transpose() * h_.tail(dof_int)).transpose());
 
 				P_temp. template block<12, 12>(0, 0) += HTH;
                                 cov P_inv = P_temp.inverse();
                                 K_h = P_inv. template block<n, 12>(0, 0) * h_x_.transpose() * h_;
                                 K_x.setZero();
 				K_x. template block<n, 12>(0, 0) = P_inv. template block<n, 12>(0, 0) * HTH;
-
 			}
 
 			//K_x = K_ * h_x_;

@@ -173,6 +173,9 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
         added_pt.z = pl_orig.points[i].z;
         added_pt.intensity = pl_orig.points[i].intensity;
         added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
+        added_pt.gloss = 0;
+        added_pt.intensity_count = 1;
+        added_pt.intensity_variance = 0;
         added_pt.normal_x = 0;
         added_pt.normal_y = 0;
         added_pt.normal_z = 0;
@@ -195,6 +198,9 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
       added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
+      added_pt.gloss = 0;
+      added_pt.intensity_count = 1;
+      added_pt.intensity_variance = 0;
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
       added_pt.normal_z = 0;

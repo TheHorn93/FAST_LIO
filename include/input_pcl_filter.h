@@ -52,7 +52,7 @@ class PCLFilterModelBase
 public:
   typedef pcl::PointCloud<_PtTp> PointCloudTp;
 
-  virtual void applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals = nullptr ) const = 0;
+  virtual void applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::VectorXf & grad_mags, Eigen::Matrix<float,3,Eigen::Dynamic> * normals = nullptr ) const = 0;
 };
 
 
@@ -63,7 +63,7 @@ class PCLFilter
 public:
   typedef pcl::PointCloud<_PtTp> PointCloudTp;
 
-  void applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::Matrix<float,3,Eigen::Dynamic> * normals = nullptr ) const override;
+  void applyFilter( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out, Eigen::VectorXf & grad_mags, Eigen::Matrix<float,3,Eigen::Dynamic> * normals = nullptr ) const override;
   void filterOutlierCloud( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
   void normalizeIntensity( const PointCloudTp& pc_in, Eigen::VectorXf & ints_out ) const;
 };

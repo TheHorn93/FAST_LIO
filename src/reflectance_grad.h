@@ -24,8 +24,8 @@ public:
   static Eigen::Vector2d getIntensityGradOnPlane( const Eigen::Vector2d& pt_query, const Eigen::Matrix<double, 6, 1>& lambda );
 
   static bool computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out );
-
-
+  static bool computeErrorAndGradientPlane2DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out );
+  static bool computeErrorAndGradientPlane3DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out );
 
 
 
@@ -44,10 +44,13 @@ public:
 
   static Eigen::Matrix<double, 4+NUM_MATCH_POINTS, 1> getTPS3D( const PointVector& pts_near, const Eigen::Matrix<double, 3, NUM_MATCH_POINTS>& pts_near_proj );
 
-  static double getIntensityFromPosOnPlaneTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS+4> & lambda, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & dists2, Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr );
+  static double getIntensityFromPosTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS+4> & lambda, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & dists2, Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr );
 
-  static Eigen::Vector3d getIntensityGradOnPlaneTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c, const Eigen::Vector4d & v,
+  static Eigen::Vector3d getIntensityGradTPS3D( const Eigen::Vector3d& pt_query, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c, const Eigen::Vector4d & v,
                                                        const Eigen::Matrix<double,3,NUM_MATCH_POINTS> & diff, const Eigen::Matrix<double,1,NUM_MATCH_POINTS> & c_logr );
+
+
+  static bool computeErrorAndGradient3D( const PointType& pt, const PointVector& pts_near, double & value, Eigen::Vector3d& grad_out );
 
 
 };

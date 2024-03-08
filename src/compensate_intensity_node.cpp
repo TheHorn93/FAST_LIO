@@ -23,7 +23,7 @@ ouster_ros::Point getInvalidPoint ( )
     return invalid_point;
 }
 
-void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointCloudType& pc_out )
+void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, const Eigen::VectorXf & grad_mags, PointCloudType& pc_out )
 {
     constexpr bool print_info = false;
     const size_t num_pts = pc_in.points.size();
@@ -36,10 +36,11 @@ void transferPoints( PointCloudType& pc_in, const Eigen::VectorXf & ints, PointC
         ouster_ros::Point& cur_pt = pc_out.points[pt_it];
         cur_pt = pc_in.points[pt_it];
         cur_pt.intensity = ints[pt_it];
+        cur_pt.reflectivity = grad_mags[pt_it];
 
         if ( cur_pt.intensity <= 1e-6f )
         {
-            cur_pt = getInvalidPoint();
+            //cur_pt = getInvalidPoint();
             cur_pt.intensity = 0;
             cur_pt.reflectivity = 0;
             continue;
@@ -88,12 +89,13 @@ void pcCallback( const sensor_msgs::PointCloud2::ConstPtr &msg )
     Eigen::Matrix3Xf normals;
     Eigen::Matrix3Xf * normals_ptr = should_publish_normals ? & normals : nullptr;
     Eigen::VectorXf new_ints;
-    input_filter->applyFilter( pc_in, new_ints, normals_ptr );
+    Eigen::VectorXf grad_mags;
+    input_filter->applyFilter( pc_in, new_ints, grad_mags, normals_ptr );
 
     new_ints = new_ints.cwiseMin(1.f);
 
     PointCloudType pc_out;
-    transferPoints( pc_in, new_ints, pc_out );
+    transferPoints( pc_in, new_ints, grad_mags, pc_out );
 
     sensor_msgs::PointCloud2 msg_out;
     pcl::toROSMsg( pc_out, msg_out );

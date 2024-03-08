@@ -12,6 +12,8 @@
 template <class ...T>
 constexpr bool always_false = false;
 
+constexpr float min_reflectance = 50. / 65535.;
+
 #ifdef DEBUG
   #define DEBUG_OUT(s) \
     std::cout << "DEBUG: " << s << std::endl;
@@ -94,8 +96,10 @@ struct EIGEN_ALIGN16 PointType
       float curvature;
       float reflectance;
       float gloss;
+      float intensity_count;
+      float intensity_variance;
     };
-    float data_c[4];
+    float data_c[8];
   };
   PCL_MAKE_ALIGNED_OPERATOR_NEW;
 };
@@ -111,6 +115,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT( PointType,
   (float, curvature, curvature)
   (float, reflectance, reflectance)
   (float, gloss, gloss)
+  (float, intensity_count, intensity_count)
+  (float, intensity_variance, intensity_variance)
 )
 
 

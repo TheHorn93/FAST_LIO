@@ -56,6 +56,7 @@
 #include "input_pcl_filter.h"
 #include <ikd-Tree/ikd-Tree/ikd_Tree.h>
 #include "reflectance_grad.h"
+#include "voxel_grid.h"
 //#define COMP_ONLY
 
 #define INIT_TIME           (0.1)
@@ -88,7 +89,7 @@ double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
 double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
-int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
+int    effct_feat_num = 0, effct_int_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
 bool   point_selected_surf[100000] = {0}, point_selected_int[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited, has_lidar_end_time_ = false;
@@ -98,6 +99,7 @@ std::shared_ptr<std::ofstream> pcdPosesFile = nullptr;
 std::shared_ptr<std::ofstream> grad_file = nullptr;
 bool use_reflec_enabled = false;
 double ref_grad_w = 0.1;
+double thrsd2 = 0.1, thrsd = 0.1;
 std::string tum_out_fname, tum_comp_fname, grad_out_fname;
 int use_channel;
 
@@ -124,14 +126,15 @@ PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
 PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr intvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
+PointCloudXYZI::Ptr laserCloudOriInt(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_intvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
 std::string comp_type, comp_params;
 
-pcl::VoxelGrid<PointType> downSizeFilterSurf;
-pcl::VoxelGrid<PointType> downSizeFilterMap;
+pcl::VoxelGrid1<PointType> downSizeFilterSurf;
+//pcl::VoxelGrid1<PointType> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
 
@@ -190,6 +193,7 @@ void pointBodyToWorld_ikfom(PointType const * const pi, PointType * const po, st
     po->z = p_global(2);
     po->intensity = pi->intensity;
     po->reflectance = pi->reflectance;
+    po->intensity_count = pi->intensity_count;
 }
 
 
@@ -203,6 +207,7 @@ void pointBodyToWorld(PointType const * const pi, PointType * const po)
     po->z = p_global(2);
     po->intensity = pi->intensity;
     po->reflectance = pi->reflectance;
+    po->intensity_count = pi->intensity_count;
 }
 
 template<typename T>
@@ -228,6 +233,7 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     //std::cout << pi->intensity << ", ";
     po->intensity = pi->intensity;
     po->reflectance = pi->reflectance;
+    po->intensity_count = pi->intensity_count;
 }
 
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
@@ -240,6 +246,7 @@ void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
     po->z = p_body_imu(2);
     po->intensity = pi->intensity;
     po->reflectance = pi->reflectance;
+    po->intensity_count = pi->intensity_count;
 }
 
 void points_cache_collect()
@@ -514,6 +521,19 @@ void map_incremental()
     {
         /* transform to world frame */
         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+
+        if ( feats_down_body->points[i].getVector3fMap().squaredNorm() < 5 ) // prevent close ones from fusion
+        {
+            feats_down_world->points[i].intensity = 0;
+            feats_down_world->points[i].reflectance = 0;
+            feats_down_world->points[i].intensity_count = 0;
+        }
+        else
+        {
+            if ( feats_down_world->points[i].intensity > min_reflectance && feats_down_world->points[i].intensity_count < 1 )
+                feats_down_world->points[i].intensity_count = 1;
+        }
+
         /* decide if need add to map */
         if (!Nearest_Points[i].empty() && flg_EKF_inited)
         {
@@ -529,6 +549,9 @@ void map_incremental()
                 PointNoNeedDownsample.push_back(feats_down_world->points[i]);
                 continue;
             }
+
+            PointToAdd.push_back(feats_down_world->points[i]); continue;
+
             for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i ++)
             {
                 if (points_near.size() < NUM_MATCH_POINTS) break;
@@ -857,12 +880,277 @@ void publish_path(const ros::Publisher pubPath)
     }
 }
 
+constexpr bool use_reflec_on_plane = true;
+constexpr bool only_high_grad = false;
 
-void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) // TODO measurement prediction from state prediction
+void h_share_model_with_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) // TODO measurement prediction from state prediction
 {
     constexpr bool print_info = false;
     double match_start = omp_get_wtime();
     laserCloudOri->clear();
+    corr_normvect->clear();
+    corr_intvect->clear();
+    total_residual = 0.0;
+
+    //std::atomic<int> num_larger = 0, num_int = 0;
+    /** closest surface search and residual computation **/
+    #ifdef MP_EN
+        omp_set_num_threads(MP_PROC_NUM);
+        #pragma omp parallel for schedule (dynamic, 16)
+    #endif
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        PointType &point_body  = feats_down_body->points[i];
+        PointType &point_world = feats_down_world->points[i];
+
+        /// Transform pt laser -> pt global frame
+        V3D p_body(point_body.x, point_body.y, point_body.z);
+        V3D p_global(s.rot * (s.offset_R_L_I*p_body + s.offset_T_L_I) + s.pos);
+        point_world.x = p_global(0);
+        point_world.y = p_global(1);
+        point_world.z = p_global(2);
+        // Forward all necessary information
+        point_world.intensity = point_body.intensity;
+        //std::cout << "pt_W_i=" << point_body.intensity << ", pt_W_r=" << point_body.reflectance << std::endl;
+        point_world.reflectance = point_body.intensity;
+
+
+        vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+        PointVector& points_near = Nearest_Points[i];
+
+        if (ekfom_data.converge)
+        {
+            /// Search ikd-tree for closest points
+            // returns nearest point in points_near ańd distances in pointSearchSqDis
+            // This list should be sorted -> ikd-Tree MANUAL_HEAP.FloatUp() on insert should do so...?
+            ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis); // Find nearest surface -> find nearest surface and identit
+            // If at least 5 points can be found current: point can be used further.
+            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : (pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false : true);
+        }
+
+        if (!point_selected_surf[i]) continue;
+
+        /// PCA of 5 nearest points
+        VF(4) pabcd;
+        point_selected_surf[i] = false;
+        point_selected_int[i] = false;
+        if (esti_plane(pabcd, points_near, 0.1f)) // Estimate plane by pca: see here: "https://stats.stackexchange.com/questions/163356/fitting-a-plane-to-a-set-of-points-in-3d-using-pca"
+        {
+            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
+            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+
+
+//            if ( (i & 511) == 0 )
+//            {
+//            V3D mean ( points_near[0].x,points_near[0].y,points_near[0].z );
+//            for ( int i = 1; i < NUM_MATCH_POINTS; ++i)
+//            {
+//                mean += V3D(points_near[i].x,points_near[i].y,points_near[i].z);
+//            }
+//            mean /= NUM_MATCH_POINTS;
+//            double e = pabcd.template head<3>().template cast<double>().dot( V3D(point_world.x,point_world.y,point_world.z)-mean );
+//            ROS_INFO_STREAM("e: " << e << " " << pd2);
+//            }
+
+
+
+            /// If plane is valid point can be computed further
+            if (s > 0.9) // TODO: Maybe checks difference point to plane along normal?
+            {
+                point_selected_surf[i] = true;
+                normvec->points[i].x = pabcd(0);
+                normvec->points[i].y = pabcd(1);
+                normvec->points[i].z = pabcd(2);
+                normvec->points[i].intensity = pd2; // will be used for distance to plane
+                normvec->points[i].reflectance = point_body.intensity; // contains either intensity or real reflectivity
+                normvec->points[i].gloss = pabcd(3); // store D of plane
+                normvec->points[i].curvature = 
+                res_last[i] = abs(pd2);
+
+                if constexpr ( only_high_grad ) if ( point_body.reflectance < min_reflectance ) continue; //else ++num_larger;
+                if ( use_reflec_enabled && point_world.reflectance > min_reflectance )
+                {
+                    // get reflectance gradient to surface
+                    double value = 0;
+                    V3D ref_grad; // should be in world frame
+                    //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane( point_world, points_near, normvec->points[i], value, ref_grad );
+                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane2DTPS( point_world, points_near, normvec->points[i], value, ref_grad );
+                    //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane3DTPS( point_world, points_near, normvec->points[i], value, ref_grad );
+                    intvec->points[i].intensity = value;
+                    intvec->points[i].x = ref_grad(0);
+                    intvec->points[i].y = ref_grad(1);
+                    intvec->points[i].z = ref_grad(2);
+                    //if ( point_selected_int[i] ) ++num_int;
+                }
+            }
+        }
+    }
+    //ROS_INFO_STREAM("high grad: " << num_larger << " " << num_int);
+
+    /// Accumulate points in laser rep and associated normvecs for all valid points
+    // Result are two point clouds: 1st containing points in laser coor-rep, 2nd containing estimated plane normal vecs as points
+    effct_feat_num = 0, effct_int_num = 0;
+    laserCloudOri->reserve(feats_down_size);
+    corr_normvect->reserve(feats_down_size);
+    corr_intvect->reserve(feats_down_size);
+    std::vector<bool> corr_int_selected; corr_int_selected.reserve(feats_down_size); // not threadsafe for writing.
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        if (point_selected_surf[i])
+        {
+            laserCloudOri->points.emplace_back(feats_down_body->points[i]);
+            corr_normvect->points.emplace_back(normvec->points[i]);
+            corr_intvect->points.emplace_back(intvec->points[i]);
+            corr_int_selected.emplace_back(point_selected_int[i]);
+            total_residual += res_last[i];
+            ++effct_feat_num;
+        }
+        //if ( point_selected_int[i] ) ++effct_int_num;
+    }
+    //ROS_INFO_STREAM("ein: "<< effct_int_num);
+    effct_int_num = effct_feat_num;
+    // If no valid points are found return function without changing state
+    if (effct_feat_num < 1)
+    {
+        ekfom_data.valid = false;
+        ROS_WARN("No Effective Points! \n");
+        return;
+    }
+
+    res_mean_last = total_residual / effct_feat_num;
+    match_time  += omp_get_wtime() - match_start;
+    double solve_start_  = omp_get_wtime();
+
+    /*** Computation of Measurment Jacobian matrix H and measurents vector ***/
+    size_t num_residuals = effct_feat_num;
+    ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
+    ekfom_data.h = MatrixXd::Zero(num_residuals,1);
+    ekfom_data.h_x_int = MatrixXd::Zero(effct_int_num, 12); //23
+    ekfom_data.h_int = MatrixXd::Zero(effct_int_num,1);
+
+//    num_int = 0;
+//    for ( int i = 0; i < feats_down_size; ++i )
+//        if ( point_selected_int[i] ) ++num_int;
+//    ROS_INFO_STREAM( "e: "<< num_int);
+//    num_int = 0;
+//    for ( int i = 0; i < effct_feat_num; ++i )
+//        if ( corr_int_selected[i] ) ++num_int;
+//    ROS_INFO_STREAM( "es: "<< num_int);
+
+    /** Create one error point for point_to_plane and one error point for intensity gradient point */
+    //num_int = 0;
+    int num_from_intensity = 0;
+    int res_it = 0;
+    for (int i = 0; i < effct_feat_num; ++i, ++res_it)
+    {
+        //if ( corr_int_selected[i] ) ++num_int;
+
+        //const int res_it = 2*i;
+        /// Use point in laser coords
+        const PointType &laser_p  = laserCloudOri->points[i];
+        V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
+        M3D point_be_crossmat;
+        point_be_crossmat << SKEW_SYM_MATRX(point_this_be); // SKEW_SYM_MATRX returns ((0,-z,y), (z,0,-x), (-y,x,0))
+
+        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I; // Transform current point: laser -> imu
+        M3D point_crossmat;
+        point_crossmat<<SKEW_SYM_MATRX(point_this); // Skew sym matrix for imu coord point == [p_imu]_x ( deriv of rotation )
+
+        /*** get the normal vector of closest surface/corner ***/
+        const PointType &norm_p = corr_normvect->points[i];
+        V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+        /*** calculate the Measurement Jacobian matrix H ***/
+        V3D C(s.rot.conjugate() * norm_vec); // Conjugates quaternion s.rot -> rotate world frame norm vec to imu frame
+        V3D A(point_crossmat * C);
+        // If Extrinsic laser -> IMU should be estimated
+        if (extrinsic_est_en)
+        {
+            V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
+            ekfom_data.h_x.template block<1, 12>(res_it,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+        }
+        // If Extrinsic sufficiently known
+        else
+        {
+            /// h_x is mat elem R^(num_pts x measurement DOFs)
+            // measurement dofs = world->body rot +trans => 6-dims + body->IMU rot+trans => 6-dims => 12-dims
+            // to h_x<1,6>(i,0) holds estimated difference point[i] measured pos -> point[i] esti pos
+            // 1-3 contains translation component
+            // 4-6 contains rotation component
+            ekfom_data.h_x.template block<1, 12>(res_it,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+
+            //     n_w', ([p_i]_x * R_wi' * n_w)'      // since VEC_FROM_ARRAY inherently is a transpose
+            // <=> n_w', n_w' * (R_wi')' * [p_i]_x' =  // [p_i]_x' = -[p_i]_x
+            // <=> n_w', n_w' * R_wi * [-p_i]_x
+            // <=> n_w' * ( I, R_wi * [-p_i]_x ) <= all in world now
+        }
+
+        /*** Measuremnt: distance to the closest surface/corner ***/
+        // Sum of all errors/resiudals
+        ekfom_data.h(res_it) = -norm_p.intensity; // minus should come from "-Kz" in paper equation?
+
+        //if ( point_selected_int[i] ) ++num_int;
+
+        /** Add Intensity gradient to kalman state. */
+        if ( use_reflec_enabled && corr_int_selected[i] )
+        {
+            const PointType &int_p = corr_intvect->points[i];
+            // get reflectance gradient to surface
+            V3D ref_grad ( int_p.x, int_p.y, int_p.z ); // should be in world frame
+
+//            const double res2 = int_p.intensity*int_p.intensity;
+//            const double th_res2 = thrsd + res2;
+//            const double weight = ref_grad_w * thrsd2 / ( th_res2 * th_res2 );
+            const double weight = ref_grad_w;
+
+            // weight them
+            ref_grad *= weight;
+
+            // all points in world, normal too.
+            // ref_g' * ( I, R_wi * [-p_i]_x )
+
+            // Transform intensity grad: World -> IMU coords
+            V3D C_ref(s.rot.conjugate() * ref_grad); // Conjugates quaternion s.rot -> rotate world frame grad vec to imu frame
+            V3D A_ref(point_crossmat * C_ref);
+
+
+            /** Add vector to state. */
+            ekfom_data.h_x_int.template block<1, 12>(num_from_intensity,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            ekfom_data.h_int(num_from_intensity) = - weight * int_p.intensity;
+
+            if constexpr ( print_info )
+            {
+                if ( (res_it & 1023) == 0 )
+                {
+                    ROS_INFO_STREAM("ri: " << res_it << " w: " << ref_grad_w << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h_int(num_from_intensity) << "\n"
+                                    << (ekfom_data.h_x.template block<1, 6>(res_it,0))  << "\n" << (ekfom_data.h_x_int.template block<1, 6>(num_from_intensity,0)));
+                }
+            }
+            ++num_from_intensity;
+        }
+    }
+
+    if ( effct_feat_num != res_it )
+    {
+        ekfom_data.h_x.conservativeResize(res_it,12);
+        ekfom_data.h.conservativeResize(res_it,1);
+    }
+    if ( effct_int_num != num_from_intensity )
+    {
+        ekfom_data.h_x_int.conservativeResize(num_from_intensity,12);
+        ekfom_data.h_int.conservativeResize(num_from_intensity,1);
+    }
+    //if constexpr ( print_info )
+    ROS_INFO_STREAM_THROTTLE(1,"int: " << num_from_intensity << " d: " << effct_feat_num << " H: " << ekfom_data.h_x.rows() << " x " << ekfom_data.h_x.cols() << " h: " << ekfom_data.h.rows() << " " << ekfom_data.h.cols() << " ref_en: " << use_reflec_enabled );
+    solve_time += omp_get_wtime() - solve_start_;
+}
+
+void h_share_model_without_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) // TODO measurement prediction from state prediction
+{
+    constexpr bool print_info = false;
+    double match_start = omp_get_wtime();
+    laserCloudOri->clear();
+    laserCloudOriInt->clear();
     corr_normvect->clear();
     corr_intvect->clear();
     total_residual = 0.0;
@@ -913,6 +1201,21 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
             float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
+
+//            if ( (i & 511) == 0 )
+//            {
+//            V3D mean ( points_near[0].x,points_near[0].y,points_near[0].z );
+//            for ( int i = 1; i < NUM_MATCH_POINTS; ++i)
+//            {
+//                mean += V3D(points_near[i].x,points_near[i].y,points_near[i].z);
+//            }
+//            mean /= NUM_MATCH_POINTS;
+//            double e = pabcd.template head<3>().template cast<double>().dot( V3D(point_world.x,point_world.y,point_world.z)-mean );
+//            ROS_INFO_STREAM("e: " << e << " " << pd2);
+//            }
+
+
+
             /// If plane is valid point can be computed further
             if (s > 0.9) // TODO: Maybe checks difference point to plane along normal?
             {
@@ -923,29 +1226,31 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
                 normvec->points[i].intensity = pd2; // will be used for distance to plane
                 normvec->points[i].reflectance = point_body.intensity; // contains either intensity or real reflectivity
                 normvec->points[i].gloss = pabcd(3); // store D of plane
-                normvec->points[i].curvature = 
+                normvec->points[i].curvature =
                 res_last[i] = abs(pd2);
-
-                if ( use_reflec_enabled &&  point_world.reflectance > 0.f )
-                {
-                    // get reflectance gradient to surface
-                    double value = 0;
-                    V3D ref_grad; // should be in world frame
-                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradient( point_world, points_near, normvec->points[i], value, ref_grad );
-                    intvec->points[i].intensity = value;
-                    intvec->points[i].x = ref_grad(0);
-                    intvec->points[i].y = ref_grad(1);
-                    intvec->points[i].z = ref_grad(2);
-                }
             }
+        }
+
+        if ( use_reflec_enabled && point_world.reflectance > min_reflectance )
+        {
+            if ( ! point_selected_surf[i] ) continue;
+            // get reflectance gradient to surface
+            double value = 0;
+            V3D ref_grad; // should be in world frame
+            point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradient3D( point_world, points_near, value, ref_grad );
+            intvec->points[i].intensity = value;
+            intvec->points[i].x = ref_grad(0);
+            intvec->points[i].y = ref_grad(1);
+            intvec->points[i].z = ref_grad(2);
         }
     }
 
     /// Accumulate points in laser rep and associated normvecs for all valid points
     // Result are two point clouds: 1st containing points in laser coor-rep, 2nd containing estimated plane normal vecs as points
-    effct_feat_num = 0;
+    effct_feat_num = 0, effct_int_num = 0;
     laserCloudOri->reserve(feats_down_size);
     corr_normvect->reserve(feats_down_size);
+    laserCloudOriInt->reserve(feats_down_size);
     corr_intvect->reserve(feats_down_size);
     for (int i = 0; i < feats_down_size; i++)
     {
@@ -953,9 +1258,14 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         {
             laserCloudOri->points.emplace_back(feats_down_body->points[i]);
             corr_normvect->points.emplace_back(normvec->points[i]);
-            corr_intvect->points.emplace_back(intvec->points[i]);
             total_residual += res_last[i];
             ++effct_feat_num;
+        }
+        if ( point_selected_int[i] )
+        {
+            laserCloudOriInt->points.emplace_back(feats_down_body->points[i]);
+            corr_intvect->points.emplace_back(intvec->points[i]);
+            ++effct_int_num;
         }
     }
     // If no valid points are found return function without changing state
@@ -974,8 +1284,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     size_t num_residuals = effct_feat_num; //*2;
     ekfom_data.h_x = MatrixXd::Zero(num_residuals, 12); //23
     ekfom_data.h = MatrixXd::Zero(num_residuals,1);
-    ekfom_data.h_x_int = MatrixXd::Zero(effct_feat_num, 12); //23
-    ekfom_data.h_int = MatrixXd::Zero(effct_feat_num,1);
+    ekfom_data.h_x_int = MatrixXd::Zero(effct_int_num, 12); //23
+    ekfom_data.h_int = MatrixXd::Zero(effct_int_num,1);
 
     /** Create one error point for point_to_plane and one error point for intensity gradient point */
     int num_from_intensity = 0;
@@ -997,7 +1307,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         const PointType &norm_p = corr_normvect->points[i];
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
-        /*** calculate the Measuremnt Jacobian matrix H ***/
+        /*** calculate the Measurement Jacobian matrix H ***/
         V3D C(s.rot.conjugate() * norm_vec); // Conjugates quaternion s.rot -> rotate world frame norm vec to imu frame
         V3D A(point_crossmat * C);
         // If Extrinsic laser -> IMU should be estimated
@@ -1024,48 +1334,52 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
         /*** Measuremnt: distance to the closest surface/corner ***/
         // Sum of all errors/resiudals
-        ekfom_data.h(res_it) = -norm_p.intensity;
-
-        /** Add Intensity gradient to kalman state. */
-        if ( use_reflec_enabled && point_selected_int[i] )
-        {
-            const PointType &int_p = corr_intvect->points[i];
-            // get reflectance gradient to surface
-            V3D ref_grad ( int_p.x, int_p.y, int_p.z ); // should be in world frame
-
-            // weight them
-            ref_grad *= ref_grad_w;
-
-            // all points in world, normal too.
-            // ref_g' * ( I, R_wi * [-p_i]_x )
-
-            // Transform intensity grad: World -> IMU coords
-            V3D C_ref(s.rot.conjugate() * ref_grad); // Conjugates quaternion s.rot -> rotate world frame grad vec to imu frame
-            V3D A_ref(point_crossmat * C_ref);
-
-
-            /** Add vector to state. */
-            ekfom_data.h_x_int.template block<1, 12>(num_from_intensity,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            ekfom_data.h_int(num_from_intensity) = - ref_grad_w * int_p.intensity;
-
-            if constexpr ( print_info )
-            {
-                if ( (res_it & 1023) == 0 )
-                {
-                    ROS_INFO_STREAM("ri: " << res_it << " w: " << ref_grad_w << " ed: " << ekfom_data.h(res_it) << " ei: " << ekfom_data.h_int(num_from_intensity) << "\n"
-                                    << (ekfom_data.h_x.template block<1, 6>(res_it,0))  << "\n" << (ekfom_data.h_x_int.template block<1, 6>(num_from_intensity,0)));
-                }
-            }
-            ++num_from_intensity;
-//            ++res_it;
-        }
+        ekfom_data.h(res_it) = -norm_p.intensity; // minus should come from "-Kz" in paper equation?
     }
+    if ( use_reflec_enabled )
+    for (int i = 0; i < effct_int_num; ++i)
+    {
+        //const int res_it = 2*i;
+        /// Use point in laser coords
+        const PointType &laser_p  = laserCloudOriInt->points[i];
+        V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
+        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I; // Transform current point: laser -> imu
+        M3D point_crossmat;
+        point_crossmat<<SKEW_SYM_MATRX(point_this); // Skew sym matrix for imu coord point == [p_imu]_x ( deriv of rotation )
+
+        const PointType &int_p = corr_intvect->points[i];
+        // get reflectance gradient to surface
+        V3D ref_grad ( int_p.x, int_p.y, int_p.z ); // should be in world frame
+
+//        const double res2 = int_p.intensity*int_p.intensity;
+//        const double th_res2 = thrsd + res2;
+//        const double weight = ref_grad_w * thrsd2 / ( th_res2 * th_res2 );
+        const double weight = ref_grad_w;
+
+        // weight them
+        ref_grad *= weight;
+
+        // ([p_i]_x * R_wi' * n_w)'  = ([p_i]_x * R_iw * n_w)'
+
+        // all points in world, normal too.
+        // ref_g' * ( I, R_wi * [-p_i]_x )
+
+        // Transform intensity grad: World -> IMU coords
+        V3D C_ref(s.rot.conjugate() * ref_grad); // Conjugates quaternion s.rot -> rotate world frame grad vec to imu frame
+        V3D A_ref(point_crossmat * C_ref);
+
+        /** Add vector to state. */
+        ekfom_data.h_x_int.template block<1, 12>(num_from_intensity,0) << VEC_FROM_ARRAY(ref_grad), VEC_FROM_ARRAY(A_ref), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        ekfom_data.h_int(num_from_intensity) = - weight * int_p.intensity;
+        ++num_from_intensity;
+    }
+
     if ( effct_feat_num != res_it )
     {
         ekfom_data.h_x.conservativeResize(res_it,12);
         ekfom_data.h.conservativeResize(res_it,1);
     }
-    if ( effct_feat_num != num_from_intensity )
+    if ( effct_int_num != num_from_intensity )
     {
         ekfom_data.h_x_int.conservativeResize(num_from_intensity,12);
         ekfom_data.h_int.conservativeResize(num_from_intensity,1);
@@ -1074,7 +1388,6 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     ROS_INFO_STREAM_THROTTLE(1,"int: " << num_from_intensity << " d: " << effct_feat_num << " H: " << ekfom_data.h_x.rows() << " x " << ekfom_data.h_x.cols() << " h: " << ekfom_data.h.rows() << " " << ekfom_data.h.cols()  );
     solve_time += omp_get_wtime() - solve_start_;
 }
-
 
 std::string generatePathFileName( double ref_grad_w, double filter_size_surf, double filter_size_map, int point_filter_num )
 {
@@ -1128,8 +1441,10 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
+    nh.param<double>("gm_threshold", thrsd, 0.1);
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
 
+    thrsd2 = thrsd * thrsd;
     std::stringstream sstr, grad_sstr;
     //sstr << "/home/jhorn/Documents/Uni/MasterThesis/data/temp_data/";
     sstr << "./fast_lio_after_map_poses_";
@@ -1152,7 +1467,7 @@ int main(int argc, char** argv)
         use_reflec_enabled = true;
         //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
-    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << tum_out_fname);
+    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << " th: " << thrsd << " f: " << tum_out_fname);
     ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
     ROS_WARN_STREAM( "use_channel = " << use_channel );
@@ -1206,7 +1521,7 @@ int main(int argc, char** argv)
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(res_last, -1000.0f, sizeof(res_last));
     downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
-    downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
+    //downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(point_selected_int, false, sizeof(point_selected_int));
     memset(res_last, -1000.0f, sizeof(res_last));
@@ -1222,7 +1537,10 @@ int main(int argc, char** argv)
 
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
-    kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi); // TODO init function
+    if constexpr ( use_reflec_on_plane )
+        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model_with_reflec_on_plane, NUM_MAX_ITERATIONS, epsi); // TODO init function
+    else
+        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model_without_reflec_on_plane, NUM_MAX_ITERATIONS, epsi); // TODO init function
 
     /*** debug record ***/
     FILE *fp;
@@ -1323,8 +1641,39 @@ int main(int argc, char** argv)
             /*** downsample the feature points in a scan ***/
             downSizeFilterSurf.setInputCloud(feats_undistort); // builds pcl::Voxelgrid<PointXYZINormal>, builds equally spaced 3D Grid and filters for centerpoints
             downSizeFilterSurf.filter(*feats_down_body); // Apply grid filter and write to pcl::PointCloud &feats_down_body
+            //feats_down_body = feats_undistort;
 
-            if constexpr ( false )
+            //if constexpr ( false )
+            if ( use_reflec_enabled )
+            {
+                // disable others...
+                if constexpr ( only_high_grad )
+                for ( int i = 0; i < feats_down_body->points.size(); ++i )
+                    (*feats_down_body)[i].reflectance = 0;
+
+//                int num_counts_grt_one = 0;
+//                for ( int i = 0; i < feats_down_body->points.size(); ++i )
+//                {
+//                    num_counts_grt_one += (*feats_down_body)[i].intensity_count > 1.1f;
+//                }
+
+                const int prev_size = feats_down_body->points.size();
+                int num_high_grad = 0;
+                for ( int i = 0; i < feats_undistort->points.size(); ++i )
+                {
+                    if ( (*feats_undistort)[i].intensity > min_reflectance && (*feats_undistort)[i].reflectance > 0.1f) // should contain grad mag
+                    {
+                        ++num_high_grad;
+                        feats_down_body->points.emplace_back((*feats_undistort)[i]);
+                        //if  ( (*feats_undistort)[i].reflectance != feats_down_body->points.back().reflectance )
+                        //    ROS_ERROR_STREAM("er: "<<  (*feats_undistort)[i].reflectance << " " << feats_down_body->points.back().reflectance );
+                    }
+                }
+                ROS_INFO_STREAM_THROTTLE(1,"e " << num_high_grad //<< " ng: " << num_counts_grt_one
+                                         << " mr: " << min_reflectance << " prev: " << prev_size << " now: " << feats_down_body->points.size());
+            }
+
+            if constexpr ( !false )
             {
                 // voxelgrid filter drops reflectance channel.
                 float maxValR = 0, maxValI = 0;
