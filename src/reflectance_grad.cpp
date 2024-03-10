@@ -467,7 +467,7 @@ bool IrregularGrid::computeErrorAndGradientPlane2DTPS( const PointType& pt, cons
     return true;
 }
 
-bool IrregularGrid::computeErrorAndGradient( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+bool IrregularGrid::computeErrorAndGradientPlane( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
 {
 
     constexpr bool print_info = false;

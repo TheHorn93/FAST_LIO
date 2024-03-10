@@ -973,8 +973,8 @@ void h_share_model_with_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datas
                     // get reflectance gradient to surface
                     double value = 0;
                     V3D ref_grad; // should be in world frame
-                    //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane( point_world, points_near, normvec->points[i], value, ref_grad );
-                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane2DTPS( point_world, points_near, normvec->points[i], value, ref_grad );
+                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane( point_world, points_near, normvec->points[i], value, ref_grad );
+                    //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane2DTPS( point_world, points_near, normvec->points[i], value, ref_grad );
                     //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane3DTPS( point_world, points_near, normvec->points[i], value, ref_grad );
                     intvec->points[i].intensity = value;
                     intvec->points[i].x = ref_grad(0);
