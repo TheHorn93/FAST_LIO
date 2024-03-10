@@ -7,7 +7,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions" )
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -fexceptions -march=native -mno-avx -mno-avx2 -Wunused-function ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -fexceptions -march=native -mno-avx -mno-avx2 -Wunused-function " ) #-fstack-protector -fsanitize=address -static-libasan ")
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
