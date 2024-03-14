@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common_lib.h"
 #include "point_type.h"
+#include "common_lib.h"
 
 namespace reflectance
 {

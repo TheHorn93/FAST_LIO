@@ -1,5 +1,4 @@
 #include "reflectance_grad.h"
-#include "common_lib.h"
 
 namespace reflectance
 {

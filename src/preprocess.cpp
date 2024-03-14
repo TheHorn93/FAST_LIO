@@ -1,4 +1,5 @@
 #include "preprocess.h"
+#include "os_shift.h"
 
 #define RETURN0     0x00
 #define RETURN0AND1 0x10
@@ -145,73 +146,133 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   }
 }
 
-
+//#ifndef COMP_ONLY
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+//#endif
 void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
-  static const double max_ref = std::pow( 2, 16 )-1;
+    //static const double max_ref = std::pow( 2, 16 )-1;
 
-  pl_raw_os.clear();
-  pl_surf.clear();
-  pl_full.clear();
-  pcl::PointCloud<ouster_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+    pl_raw_os.clear();
+    pl_surf.clear();
+    pl_full.clear();
+    pcl::PointCloud<ouster_ros::Point> pl_orig;
+    pcl::fromROSMsg(*msg, pl_orig);
 
-  pl_raw_os = pl_orig;
+    pl_raw_os = pl_orig;
 
-  const int plsize = pl_orig.size();
-  const float blind2 = (blind * blind);
-  pl_surf.reserve(plsize);
+    const int plsize = pl_orig.size();
+    const float blind2 = (blind * blind);
+    pl_surf.reserve(plsize);
 
-  if ( pass_through )
-  {
-      pl_surf.resize(plsize);
-      for (int i = 0; i < plsize; ++i)
-      {
-        PointType & added_pt = pl_surf[i];
-        added_pt.x = pl_orig.points[i].x;
-        added_pt.y = pl_orig.points[i].y;
-        added_pt.z = pl_orig.points[i].z;
-        added_pt.intensity = pl_orig.points[i].intensity;
-        added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
-        added_pt.gloss = 0;
-        added_pt.intensity_count = 1;
-        added_pt.intensity_variance = 0;
-        added_pt.normal_x = 0;
-        added_pt.normal_y = 0;
-        added_pt.normal_z = 0;
-        added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
-      }
-  }
-  else
-  {
-    for (int i = 0; i < pl_orig.points.size(); i++)
+    if ( pass_through )
     {
-      if (i % point_filter_num != 0) continue;
-      if ( !isValidPoint( pl_orig.points[i] ) ) continue;
-
-      const float range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
-      if (range < blind2) continue;
-
-      PointType added_pt;
-      added_pt.x = pl_orig.points[i].x;
-      added_pt.y = pl_orig.points[i].y;
-      added_pt.z = pl_orig.points[i].z;
-      added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
-      added_pt.gloss = 0;
-      added_pt.intensity_count = 1;
-      added_pt.intensity_variance = 0;
-      added_pt.normal_x = 0;
-      added_pt.normal_y = 0;
-      added_pt.normal_z = 0;
-      added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
-      pl_surf.points.emplace_back(added_pt);
+        pl_surf.resize(plsize);
+        for (int i = 0; i < plsize; ++i)
+        {
+            PointType & added_pt = pl_surf[i];
+            added_pt.x = pl_orig.points[i].x;
+            added_pt.y = pl_orig.points[i].y;
+            added_pt.z = pl_orig.points[i].z;
+            added_pt.intensity = pl_orig.points[i].intensity;
+            added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
+            added_pt.gloss = 0;
+            added_pt.intensity_count = 1;
+            added_pt.intensity_variance = 0;
+            added_pt.normal_x = 0;
+            added_pt.normal_y = 0;
+            added_pt.normal_z = 0;
+            added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
+        }
     }
-    //ROS_INFO_STREAM("maxRefl: " << maxRefl );
-  }
-  // pub_func(pl_surf, pub_full, msg->header.stamp);
-  // pub_func(pl_surf, pub_corn, msg->header.stamp);
-  //ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points. max: " << maxVal << " " << oMaxVal);
+    else
+    {
+
+        constexpr int height = 128;
+        constexpr int width = 1024;
+        constexpr bool printcomp = false;
+        cv::Mat img, imgc, imgi;
+        if constexpr ( printcomp )
+        {
+            img = cv::Mat::zeros(height, width, CV_8UC1);
+            imgc = cv::Mat::zeros(height, width, CV_8UC1);
+            imgi = cv::Mat::zeros(height, width, CV_8UC1);
+        }
+        pl_full.resize(plsize);
+        int offset = 0, row = 0, col = 0;
+        for (int i = 0; i < plsize; ++i, ++col)
+        {
+            if ( row >= height ) { row = 0; offset = row * width; }
+            if ( col >= width ) { col = 0; ++row; offset = row * width; }
+            const int comp_col = os_shift::inverseCompensateColPos1024( row, col );
+            const int comp_idx = offset + comp_col;
+
+            PointType & added_pt = pl_full[comp_idx];
+            added_pt.x = pl_orig.points[i].x;
+            added_pt.y = pl_orig.points[i].y;
+            added_pt.z = pl_orig.points[i].z;
+            added_pt.intensity = pl_orig.points[i].intensity;
+            added_pt.reflectance = pl_orig.points[i].reflectivity; // intensity
+            added_pt.gloss = 0;
+            added_pt.intensity_count = 1;
+            added_pt.intensity_variance = 0;
+            added_pt.normal_x = 0;
+            added_pt.normal_y = 0;
+            added_pt.normal_z = 0;
+            added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
+
+            if constexpr ( printcomp )
+            {
+                const float draw_range = std::min<float>(255.f,25.f* std::sqrt(added_pt.x * added_pt.x +added_pt.y * added_pt.y + added_pt.z * added_pt.z));
+                img.at<uchar>(row,col) = uchar(draw_range);
+                imgc.at<uchar>(row,comp_col) = uchar(draw_range);
+
+                const float draw_int = std::min<float>(255.f, 255.f * added_pt.intensity);
+                imgi.at<uchar>(row,comp_col) = uchar(draw_int);
+
+                if ( (i & 511) == 0 )
+                {
+                    ROS_INFO_STREAM("c: " << col << " r: " << row << " cc: " << comp_col << " o: "<< offset << " ci: " << comp_idx << " d: " << draw_range );
+                }
+            }
+
+            if (i % point_filter_num != 0) continue;
+            if ( !isValidPoint( pl_orig.points[i] ) ) continue;
+
+            const float range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
+            if (range < blind2) continue;
+
+            pl_surf.points.emplace_back(added_pt);
+        }
+        //ROS_INFO_STREAM("maxRefl: " << maxRefl );
+
+
+        if constexpr ( printcomp )
+        {
+            cv::imwrite("./range.png",img);
+            cv::imwrite("./rangec.png",imgc);
+            cv::imwrite("./rangei.png",imgi);
+
+            cv::Mat imgd = cv::Mat::zeros(height, width, CV_8UC1);
+            int offset = 0, row = 0, col = 0;
+            for (int i = 0; i < plsize; ++i, ++col)
+            {
+                if ( row >= height ) { row = 0; offset = row * width; }
+                if ( col >= width ) { col = 0; ++row; offset = row * width; }
+                const PointType & added_pt = pl_full[offset + col];
+                const float draw_range = std::min<float>(255.f,25.f* std::sqrt(added_pt.x * added_pt.x +added_pt.y * added_pt.y + added_pt.z * added_pt.z));
+                imgd.at<uchar>(row,col) = uchar(draw_range);
+            }
+            cv::imwrite("./ranged.png",imgd);
+            // pl_full is now correctly ordered!
+        }
+
+    }
+    // pub_func(pl_surf, pub_full, msg->header.stamp);
+    // pub_func(pl_surf, pub_corn, msg->header.stamp);
+    //ROS_INFO_STREAM( "Got " << pl_surf.points.size()  << " Points. max: " << maxVal << " " << oMaxVal);
 }
 
 void Preprocess::hesai32_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
