@@ -22,14 +22,15 @@ void Preprocess::set(bool pass_through_, int lid_type, double bld, int pfilt_num
     point_filter_num = pfilt_num;
 }
 
-void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out, const float & threshold)
 {
+    min_intensity = threshold;
     avia_handler(msg);
     *pcl_out = pl_surf;
 }
 
 template <typename Cloud>
-void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename Cloud::Ptr &pcl_out)
+void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename Cloud::Ptr &pcl_out, const float & threshold)
 {
     switch (time_unit)
     {
@@ -49,6 +50,8 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename
         time_unit_scale = 1.f;
         break;
     }
+
+    min_intensity = threshold;
 
     switch (lidar_type)
     {
@@ -79,9 +82,9 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename
     }
 }
 
-template void Preprocess::process<PointCloudOuster>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudOuster::Ptr &pcl_out);
-template void Preprocess::process<PointCloudHesai>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudHesai::Ptr &pcl_out);
-template void Preprocess::process<PointCloudXYZI>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudXYZI::Ptr &pcl_out);
+template void Preprocess::process<PointCloudOuster>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudOuster::Ptr &pcl_out, const float & threshold);
+template void Preprocess::process<PointCloudHesai>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudHesai::Ptr &pcl_out, const float & threshold);
+template void Preprocess::process<PointCloudXYZI>(const sensor_msgs::PointCloud2::ConstPtr &msg, typename PointCloudXYZI::Ptr &pcl_out, const float & threshold);
 
 void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
 {
@@ -231,7 +234,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
     }
     else
     {
-
+        float max_int = -1, max_refl = -1;
         constexpr int height = 128;
         constexpr int width = 1024;
         constexpr bool printcomp = false;
@@ -286,13 +289,23 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             const float range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
             if (range < blind2) continue;
 
-            if (range < blind_null_2 && added_pt.intensity < min_reflectance ) continue;
+            if ( use_compensated )
+            {
+                if (range < blind_null_2 && added_pt.intensity < min_intensity ) continue;
+            }
+            else
+            {
+                if (range < blind_null_2 && added_pt.reflectance < min_intensity ) continue;
+            }
+
+            //if ( added_pt.reflectance > max_refl ) max_refl = added_pt.reflectance;
+            //if ( added_pt.intensity > max_int ) max_int = added_pt.intensity;
 
             if ( added_pt.curvature > max_curvature ) max_curvature = added_pt.curvature;
             pl_surf.points.emplace_back(added_pt);
         }
         //ROS_INFO_STREAM("max_curv: " << max_curvature << " last: " << pl_surf.points.back().curvature);
-        //ROS_INFO_STREAM("maxRefl: " << maxRefl );
+        //ROS_INFO_STREAM("maxRefl: " << max_refl << " " << max_int << " th: " << min_intensity);
 
 
         if constexpr ( printcomp )

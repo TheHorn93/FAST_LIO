@@ -23,9 +23,9 @@ class Preprocess
   Preprocess();
   ~Preprocess();
 
-  void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out, const float & threshold );
   template <typename Cloud>
-  void process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename Cloud::Ptr &pcl_out);
+  void process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename Cloud::Ptr &pcl_out, const float & threshold);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
   void setUseAmbient( bool ambient );
 
@@ -35,7 +35,9 @@ class Preprocess
   float time_unit_scale;
   int lidar_type, point_filter_num, N_SCANS, SCAN_RATE, time_unit;
   double blind;
+  bool use_compensated = false;
   float max_curvature = 0;
+  float min_intensity = min_reflectance;
   bool given_offset_time, pass_through;
   ros::Publisher pub_full, pub_surf;
 

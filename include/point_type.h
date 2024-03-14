@@ -12,7 +12,8 @@
 template <class ...T>
 constexpr bool always_false = false;
 
-constexpr float min_reflectance = 50. / 65535.;
+constexpr float min_reflectance_full = 50.;
+constexpr float min_reflectance = min_reflectance_full / 65535.;
 
 #ifdef DEBUG
   #define DEBUG_OUT(s) \

@@ -365,7 +365,8 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process<PointCloudXYZI>(msg, ptr);
+    const float min_ref_threshold = use_reflec_enabled ? min_reflectance : min_reflectance_full;
+    p_pre->process<PointCloudXYZI>(msg, ptr, min_ref_threshold);
     lidar_buffer.push_back(ptr);
     max_curvature_buffer.emplace_back(p_pre->max_curvature);
     if ( store_compensated_ && p_pre_raw )
@@ -373,13 +374,13 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
         if  ( p_pre->lidar_type == OUST64 )
         {
             PointCloudOuster::Ptr ptr_raw(new PointCloudOuster());
-            p_pre_raw->process<PointCloudOuster>(msg, ptr_raw);
+            p_pre_raw->process<PointCloudOuster>(msg, ptr_raw, min_ref_threshold);
             lidar_buffer_raw_os.push_back(ptr_raw);
         }
         if ( p_pre->lidar_type == HESAI32 )
         {
             PointCloudHesai::Ptr ptr_raw(new PointCloudHesai());
-            p_pre_raw->process<PointCloudHesai>(msg, ptr_raw);
+            p_pre_raw->process<PointCloudHesai>(msg, ptr_raw, min_ref_threshold);
             lidar_buffer_raw_hs.push_back(ptr_raw);
         }
     }
@@ -418,8 +419,9 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
         printf("Self sync IMU and LiDAR, time diff is %.10lf \n", timediff_lidar_wrt_imu);
     }
 
+    const float min_ref_threshold = use_reflec_enabled ? min_reflectance : min_reflectance_full;
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr);
+    p_pre->process(msg, ptr, min_ref_threshold);
     lidar_buffer.push_back(ptr);
     max_curvature_buffer.emplace_back(p_pre->max_curvature);
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
@@ -1485,6 +1487,7 @@ int main(int argc, char** argv)
     if ( ref_grad_w > 0. )
     {
         use_reflec_enabled = true;
+        p_pre->use_compensated = true; // raw ouster nce
         //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
     ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << " th: " << thrsd << " f: " << tum_out_fname);
