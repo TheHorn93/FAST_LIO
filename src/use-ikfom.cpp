@@ -1,36 +1,5 @@
-#ifndef USE_IKFOM_H
-#define USE_IKFOM_H
-
 #include <IKFoM_toolkit/esekfom/esekfom.hpp>
-
-typedef MTK::vect<3, double> vect3;
-typedef MTK::SO3<double> SO3;
-typedef MTK::S2<double, 98090, 10000, 1> S2;
-typedef MTK::vect<1, double> vect1;
-typedef MTK::vect<2, double> vect2;
-
-MTK_BUILD_MANIFOLD(state_ikfom,
-((vect3, pos)) // Current position estimate
-((SO3, rot))   // Current rotation estimate
-((SO3, offset_R_L_I)) // Estimate offset laser -> imu
-((vect3, offset_T_L_I)) // Estimate rotation laser -> imu
-((vect3, vel))
-((vect3, bg))
-((vect3, ba))
-((S2, grav))
-);
-
-MTK_BUILD_MANIFOLD(input_ikfom,
-((vect3, acc))
-((vect3, gyro))
-);
-
-MTK_BUILD_MANIFOLD(process_noise_ikfom,
-((vect3, ng))
-((vect3, na))
-((vect3, nbg))
-((vect3, nba))
-);
+#include "use-ikfom.h"
 
 MTK::get_cov<process_noise_ikfom>::type process_noise_cov()
 {
@@ -122,5 +91,3 @@ vect3 SO3ToEuler(const SO3 &orient)
 		// euler_ang[0] = roll, euler_ang[1] = pitch, euler_ang[2] = yaw
 	return euler_ang;
 }
-
-#endif

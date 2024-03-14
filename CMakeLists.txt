@@ -50,6 +50,7 @@ find_package(catkin REQUIRED COMPONENTS
   livox_ros_driver
   message_generation
   eigen_conversions
+  cv_bridge
 )
 
 find_package(Eigen3 REQUIRED)
@@ -89,6 +90,9 @@ file(GLOB lidar_intensity_correction_srcs ${PROJECT_SOURCE_DIR}/deps/lidar_inten
 add_executable(fastlio_mapping
   src/laserMapping.cpp
   include/ikd-Tree/ikd-Tree/ikd_Tree.cpp
+  src/use-ikfom.cpp
+  src/common_lib.cpp
+  src/IMU_Processing.cpp
   src/preprocess.cpp
   src/reflectance_grad.cpp
 )

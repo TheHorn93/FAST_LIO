@@ -246,7 +246,7 @@ Eigen::Vector3d IrregularGrid::transformTo3DPlane( const PointType& pt, const Po
     return projectPtToPlane( pt_pos, anchor_pos, normal ); // get point on plane, rotate to UnitZ ( Eq. \pi(p) = R_n (p-d_o(p)n_o) )
 }
 
-bool IrregularGrid::computeErrorAndGradientPlane3DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+bool IrregularGrid::computeErrorAndGradientPlane3DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & error, Eigen::Vector3d& grad_out, double & value )
 {
     constexpr bool print_info = false;
     const Eigen::Vector3d normal ( norm_p.x, norm_p.y, norm_p.z );
@@ -356,11 +356,12 @@ bool IrregularGrid::computeErrorAndGradientPlane3DTPS( const PointType& pt, cons
         }
     }
 
-    value = int_at_pos - pt.reflectance;
+    value = int_at_pos;
+    error = int_at_pos - pt.reflectance;
     return true;
 }
 
-bool IrregularGrid::computeErrorAndGradientPlane2DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+bool IrregularGrid::computeErrorAndGradientPlane2DTPS( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & error, Eigen::Vector3d& grad_out, double & value )
 {
     constexpr bool print_info = false;
 
@@ -460,13 +461,12 @@ bool IrregularGrid::computeErrorAndGradientPlane2DTPS( const PointType& pt, cons
         }
     }
 
-    // why is it with another minus in front on the pc?
-    value = int_at_pos - pt.reflectance;
-
+    value = int_at_pos;
+    error = int_at_pos - pt.reflectance;
     return true;
 }
 
-bool IrregularGrid::computeErrorAndGradientPlane( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & value, Eigen::Vector3d& grad_out )
+bool IrregularGrid::computeErrorAndGradientPlane( const PointType& pt, const PointVector& pts_near, const PointType & norm_p, double & error, Eigen::Vector3d& grad_out, double & value )
 {
 
     constexpr bool print_info = false;
@@ -561,11 +561,12 @@ bool IrregularGrid::computeErrorAndGradientPlane( const PointType& pt, const Poi
         }
     }
 
-    value = int_at_pos - pt.reflectance;
+    value = int_at_pos;
+    error = int_at_pos - pt.reflectance;
     return true;
 }
 
-bool IrregularGrid::computeErrorAndGradient3D( const PointType& pt, const PointVector& pts_near, double & value, Eigen::Vector3d& grad_out )
+bool IrregularGrid::computeErrorAndGradient3D( const PointType& pt, const PointVector& pts_near, double & error, Eigen::Vector3d& grad_out, double & value )
 {
 
     constexpr bool print_info = false;
@@ -649,7 +650,8 @@ bool IrregularGrid::computeErrorAndGradient3D( const PointType& pt, const PointV
             //                          << "\nL: " << lambda.transpose() << " o: " << (other_lambda.template head<6>()).transpose()  );
         }
     }
-    value = int_at_pos - pt.reflectance;
+    value = int_at_pos;
+    error = int_at_pos - pt.reflectance;
     return true;
 }
 

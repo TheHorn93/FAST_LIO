@@ -1618,7 +1618,7 @@ public:
 	}
 
 	//iterated error state EKF update modified for one specific system.
-        void update_iterated_dyn_share_modified(double R, double R2, double &solve_time) {
+        void update_iterated_dyn_share_modified(double R, double &solve_time) {
 
 		dyn_share_datastruct<scalar_type> dyn_share;
 		dyn_share.valid = true;

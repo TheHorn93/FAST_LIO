@@ -146,6 +146,42 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   }
 }
 
+
+template <typename Scalar>
+inline
+Scalar project_row ( const Scalar & z, const Scalar & range )
+{
+    static constexpr Scalar fov_up = 45;
+    static constexpr Scalar fov_down = -45;
+    static constexpr int num_scan_lines = 128;
+    static constexpr Scalar inv_vert_sensor_res = num_scan_lines / (std::abs(fov_up) + std::abs(fov_down));
+    static constexpr Scalar invPIx180 = Scalar(180.f)/Scalar(M_PI);
+    return  ((Scalar(M_PI_2)-std::acos(z/range)) * invPIx180 - fov_down) * inv_vert_sensor_res;
+}
+
+template <typename Scalar>
+inline
+Scalar project_col ( const Scalar & y, const Scalar & x )
+{
+    static constexpr Scalar fov_up = 45;
+    static constexpr Scalar fov_down = 45;
+    static constexpr int num_scan_columns = 1024;
+
+    static constexpr Scalar inv_hori_sensor_res = num_scan_columns / Scalar(360.f);
+    static constexpr Scalar to_rel_angle = Scalar(180.f)/Scalar(M_PI) * inv_hori_sensor_res;
+    static constexpr Scalar scan_column_offset = num_scan_columns / 2;
+
+    static constexpr bool ccw = false;
+
+    const Scalar col = std::atan2(y,x) * to_rel_angle + scan_column_offset;
+    const Scalar col_rel = col + (( col < 0 ) ? +num_scan_columns : ( col >= num_scan_columns ? -num_scan_columns : 0 ));
+    return ccw ? col_rel : num_scan_columns - col_rel;
+
+
+    // point2d[0] = 0.5 * width * (1 - PI_INV * atan2f(point3d[1], point3d[0]));
+
+}
+
 //#ifndef COMP_ONLY
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -262,7 +298,17 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
                 if ( row >= height ) { row = 0; offset = row * width; }
                 if ( col >= width ) { col = 0; ++row; offset = row * width; }
                 const PointType & added_pt = pl_full[offset + col];
-                const float draw_range = std::min<float>(255.f,25.f* std::sqrt(added_pt.x * added_pt.x +added_pt.y * added_pt.y + added_pt.z * added_pt.z));
+                const float range = std::sqrt(added_pt.x * added_pt.x +added_pt.y * added_pt.y + added_pt.z * added_pt.z);
+                const float draw_range = std::min<float>(255.f,25.f* range);
+
+
+                if ( (i & 511) == 0 && range > 0.1 )
+                {
+                    const float prow = (height-1) - project_row<float> ( added_pt.z, range );
+                    const float pcol = project_col<float> ( added_pt.y, added_pt.x );
+                    ROS_INFO_STREAM("r: " << row << " " << prow << " c: " << col << " " << pcol );
+                }
+
                 imgd.at<uchar>(row,col) = uchar(draw_range);
             }
             cv::imwrite("./ranged.png",imgd);
