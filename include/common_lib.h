@@ -1,13 +1,9 @@
 #pragma once
 
-//#include <so3_math.h>
 #include <Eigen/Eigen>
 #include "point_type.h"
 #include <fast_lio/Pose6D.h>
 #include <sensor_msgs/Imu.h>
-//#include <nav_msgs/Odometry.h>
-//#include <tf/transform_broadcaster.h>
-//#include <eigen_conversions/eigen_msg.h>
 
 using namespace std;
 using namespace Eigen;
@@ -97,19 +93,6 @@ inline T deg2rad(T degrees)
 template<typename T>
 extern Pose6D set_pose6d(const double t, const Matrix<T, 3, 1> &a, const Matrix<T, 3, 1> &g, \
                 const Matrix<T, 3, 1> &v, const Matrix<T, 3, 1> &p, const Matrix<T, 3, 3> &R);
-//{
-//    Pose6D rot_kp;
-//    rot_kp.offset_time = t;
-//    for (int i = 0; i < 3; i++)
-//    {
-//        rot_kp.acc[i] = a(i);
-//        rot_kp.gyr[i] = g(i);
-//        rot_kp.vel[i] = v(i);
-//        rot_kp.pos[i] = p(i);
-//        for (int j = 0; j < 3; j++)  rot_kp.rot[i*3+j] = R(i,j);
-//    }
-//    return move(rot_kp);
-//}
 
 /* comment
 plane equation: Ax + By + Cz + D = 0

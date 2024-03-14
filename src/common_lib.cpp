@@ -1,13 +1,6 @@
 #include "common_lib.h"
 
 #include <so3_math.h>
-//#include <Eigen/Eigen>
-//#include "point_type.h"
-//#include <fast_lio/Pose6D.h>
-//#include <sensor_msgs/Imu.h>
-//#include <nav_msgs/Odometry.h>
-//#include <tf/transform_broadcaster.h>
-//#include <eigen_conversions/eigen_msg.h>
 
 MeasureGroup::MeasureGroup()
 {
@@ -146,7 +139,6 @@ bool esti_normvector(Matrix<T, 3, 1> &normvec, const PointVector &point, const T
     return true;
 }
 template bool esti_normvector<float>(Matrix<float, 3, 1> &normvec, const PointVector &point, const float &threshold, const int &point_num);
-//template bool esti_normvector<double>(Matrix<double, 3, 1> &normvec, const PointVector &point, const double &threshold, const int &point_num);
 
 float calc_dist(PointType p1, PointType p2){
     float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);

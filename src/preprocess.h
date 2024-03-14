@@ -35,6 +35,7 @@ class Preprocess
   float time_unit_scale;
   int lidar_type, point_filter_num, N_SCANS, SCAN_RATE, time_unit;
   double blind;
+  float max_curvature = 0;
   bool given_offset_time, pass_through;
   ros::Publisher pub_full, pub_surf;
 

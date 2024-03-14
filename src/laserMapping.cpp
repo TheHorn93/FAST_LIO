@@ -116,6 +116,7 @@ vector<double>       extrinT(3, 0.0);
 vector<double>       extrinR(9, 0.0);
 deque<int64_t>                    time_buffer_ns;
 deque<double>                     time_buffer;
+deque<float>                      max_curvature_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
 deque<PointCloudOuster::Ptr>      lidar_buffer_raw_os;
 deque<PointCloudHesai::Ptr>       lidar_buffer_raw_hs;
@@ -358,6 +359,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
+        max_curvature_buffer.clear();
         lidar_buffer_raw_os.clear();
         lidar_buffer_raw_hs.clear();
     }
@@ -365,6 +367,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
     p_pre->process<PointCloudXYZI>(msg, ptr);
     lidar_buffer.push_back(ptr);
+    max_curvature_buffer.emplace_back(p_pre->max_curvature);
     if ( store_compensated_ && p_pre_raw )
     {
         if  ( p_pre->lidar_type == OUST64 )
@@ -399,6 +402,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
+        max_curvature_buffer.clear();
     }
     last_timestamp_lidar = msg->header.stamp.toSec();
 
@@ -417,6 +421,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
+    max_curvature_buffer.emplace_back(p_pre->max_curvature);
     time_buffer_ns.push_back(msg->header.stamp.toNSec());
     time_buffer.push_back(last_timestamp_lidar);
 
@@ -458,6 +463,7 @@ double lidar_mean_scantime = 0.0;
 int    scan_num = 0;
 bool sync_packages(MeasureGroup &meas)
 {
+    constexpr bool print_info = false;
     if (lidar_buffer.empty() || imu_buffer.empty()) {
         return false;
     }
@@ -466,6 +472,7 @@ bool sync_packages(MeasureGroup &meas)
     if(!lidar_pushed)
     {
         meas.lidar = lidar_buffer.front();
+        float max_curvature = max_curvature_buffer.front();
         double  lidar_beg_time = time_buffer.front();
         lidar_ts_ns = time_buffer_ns.front();
         if ( has_lidar_end_time_ )
@@ -476,15 +483,15 @@ bool sync_packages(MeasureGroup &meas)
                 lidar_beg_time = lidar_end_time - lidar_mean_scantime;
                 ROS_WARN("Too few input point cloud!\n");
             }
-            else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
+            else if (max_curvature / double(1000) < 0.5 * lidar_mean_scantime)
             {
                 lidar_beg_time = lidar_end_time - lidar_mean_scantime;
             }
             else
             {
                 scan_num ++;
-                lidar_beg_time = lidar_end_time - meas.lidar->points.back().curvature / double(1000);
-                lidar_mean_scantime += (meas.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+                lidar_beg_time = lidar_end_time - max_curvature / double(1000);
+                lidar_mean_scantime += (max_curvature / double(1000) - lidar_mean_scantime) / scan_num;
             }
         }
         else
@@ -494,15 +501,20 @@ bool sync_packages(MeasureGroup &meas)
                 lidar_end_time = lidar_beg_time + lidar_mean_scantime;
                 ROS_WARN("Too few input point cloud!\n");
             }
-            else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
+            else if (max_curvature / double(1000) < 0.5 * lidar_mean_scantime)
             {
                 lidar_end_time = lidar_beg_time + lidar_mean_scantime;
+                if constexpr ( print_info )
+                ROS_INFO_STREAM("Nope. LastPt: " << max_curvature << " mean: " << lidar_mean_scantime );
             }
             else
             {
                 scan_num ++;
-                lidar_end_time = lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-                lidar_mean_scantime += (meas.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+                lidar_end_time = lidar_beg_time + max_curvature/ double(1000);
+                lidar_mean_scantime += (max_curvature / double(1000) - lidar_mean_scantime) / scan_num;
+
+                if constexpr ( print_info )
+                ROS_INFO_STREAM("Matched. LastPt: " << max_curvature << " mean: " << lidar_mean_scantime );
             }
         }
 
@@ -543,6 +555,7 @@ bool sync_packages(MeasureGroup &meas)
     }
 
     lidar_buffer.pop_front();
+    max_curvature_buffer.pop_front();
     if ( ! lidar_buffer_raw_os.empty() ) lidar_buffer_raw_os.pop_front();
     if ( ! lidar_buffer_raw_hs.empty() ) lidar_buffer_raw_hs.pop_front();
     time_buffer_ns.pop_front();
@@ -901,7 +914,6 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
                           << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
         }
     }
-
 }
 
 void publish_path(const ros::Publisher pubPath)
@@ -999,8 +1011,8 @@ void h_share_model_with_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datas
                     // get reflectance gradient to surface
                     double error = 0, value = 0;
                     V3D ref_grad; // should be in world frame
-                    //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane( point_world, points_near, normvec->points[i], error, ref_grad, value );
-                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane2DTPS( point_world, points_near, normvec->points[i], error, ref_grad, value );
+                    point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane( point_world, points_near, normvec->points[i], error, ref_grad, value );
+                    //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane2DTPS( point_world, points_near, normvec->points[i], error, ref_grad, value );
                     //point_selected_int[i] = reflectance::IrregularGrid::computeErrorAndGradientPlane3DTPS( point_world, points_near, normvec->points[i], error, ref_grad, value );
                     intvec->points[i].intensity = error;
                     intvec->points[i].reflectance = value;
@@ -1539,12 +1551,12 @@ int main(int argc, char** argv)
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
     p_imu->set_dont_compensate(dont_compensate);
 
-    double epsi[23] = {0.001};
-    fill(epsi, epsi+23, 0.001);
+    std::array<double, 23> epsi{}; // stricter values from ethz_asl: fast lio
+    epsi.fill(1e-5);
     if constexpr ( use_reflec_on_plane )
-        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model_with_reflec_on_plane, NUM_MAX_ITERATIONS, epsi); // TODO init function
+        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model_with_reflec_on_plane, NUM_MAX_ITERATIONS, &epsi.front()); // TODO init function
     else
-        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model_without_reflec_on_plane, NUM_MAX_ITERATIONS, epsi); // TODO init function
+        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model_without_reflec_on_plane, NUM_MAX_ITERATIONS, &epsi.front()); // TODO init function
 
     /*** debug record ***/
     FILE *fp;
