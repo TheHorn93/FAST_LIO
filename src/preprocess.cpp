@@ -237,7 +237,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
         float max_int = -1, max_refl = -1;
         constexpr int height = 128;
         constexpr int width = 1024;
-        constexpr bool printcomp = false;
+        constexpr bool printcomp = false, print_info = false;
         cv::Mat img, imgc, imgi;
         if constexpr ( printcomp )
         {
@@ -246,7 +246,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             imgi = cv::Mat::zeros(height, width, CV_8UC1);
         }
         pl_full.resize(plsize);
-        int offset = 0, row = 0, col = 0;
+        int offset = 0, row = 0, col = 0, last_i = 0;
         for (int i = 0; i < plsize; ++i, ++col)
         {
             if ( row >= height ) { row = 0; offset = row * width; }
@@ -267,6 +267,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             added_pt.normal_y = 0;
             added_pt.normal_z = 0;
             added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
+            if ( added_pt.curvature > max_curvature ) max_curvature = added_pt.curvature;
 
             if constexpr ( printcomp )
             {
@@ -298,15 +299,17 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
                 if (range < blind_null_2 && added_pt.reflectance < min_intensity ) continue;
             }
 
-            //if ( added_pt.reflectance > max_refl ) max_refl = added_pt.reflectance;
-            //if ( added_pt.intensity > max_int ) max_int = added_pt.intensity;
+            if ( added_pt.reflectance > max_refl ) max_refl = added_pt.reflectance;
+            if ( added_pt.intensity > max_int ) max_int = added_pt.intensity;
 
-            if ( added_pt.curvature > max_curvature ) max_curvature = added_pt.curvature;
+            last_i = i;
             pl_surf.points.emplace_back(added_pt);
         }
-        //ROS_INFO_STREAM("max_curv: " << max_curvature << " last: " << pl_surf.points.back().curvature);
-        //ROS_INFO_STREAM("maxRefl: " << max_refl << " " << max_int << " th: " << min_intensity);
-
+        if constexpr ( print_info )
+        {
+            ROS_INFO_STREAM("max_curv: " << max_curvature << " last: " << pl_surf.points.back().curvature << " ( " << last_i << " ) ti: " << pl_orig.points[last_i].t << " te: " << pl_orig.points.back().t);
+            ROS_INFO_STREAM("maxRefl: " << max_refl << " " << max_int << " th: " << min_intensity);
+        }
 
         if constexpr ( printcomp )
         {
