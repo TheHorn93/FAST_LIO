@@ -33,8 +33,8 @@
     <param name="comp_model" type="string" value="$(arg model)"/>
     <param name="comp_params" type="string" value="$(arg params)"/>
     <param name="requires_os_shift" type="bool" value="$(arg requires_os_shift)"/>
-    <param name="w_filter_size" type="int" value="2"/>
-    <param name="h_filter_size" type="int" value="2"/>
+    <param name="w_filter_size" type="int" value="1"/>
+    <param name="h_filter_size" type="int" value="1"/>
     <param name="gm_threshold" type="double" value="$(arg gm_threshold)"/>
 
     <include file="$(find fast_lio)/launch/nce_ouster_128_eval.launch">

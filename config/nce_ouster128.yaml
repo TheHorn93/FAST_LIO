@@ -1,8 +1,8 @@
 common:
     lid_topic:  "/os_cloud_node/points"
     comp_lid_topic: "/cloud_compensated"
-    imu_topic:  "/os_cloud_node/imu"
-    #imu_topic:  "/alphasense_driver_ros/imu"
+    #imu_topic:  "/os_cloud_node/imu"
+    imu_topic:  "/alphasense_driver_ros/imu"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     
 preprocess:
@@ -19,11 +19,11 @@ mapping:
     det_range: 55.0
     extrinsic_est_en:  false   # true: enable the online estimation of IMU-LiDAR extrinsic
     #id 
-    #extrinsic_T: [-0.037, -0.0084, -0.02558] # transforms a point from lidar into imu frame # alphasense imu
-    #extrinsic_R: [ 1,  0,  0, 0, -1,  0, 0,  0, -1]
-    extrinsic_T: [-0.006253, 0.011775, -0.028535] # os imu
+    extrinsic_T: [-0.037, -0.0084, -0.02558] # transforms a point from lidar into imu frame # alphasense imu
+    extrinsic_R: [ 1,  0,  0, 0, -1,  0, 0,  0, -1]
+    #extrinsic_T: [-0.006253, 0.011775, -0.028535] # os imu
     #extrinsic_T: [ -0.006253, 0.011775, -0.007645 ]
-    extrinsic_R: [ 1, 0, 0, 0, 1, 0, 0, 0, 1]
+    #extrinsic_R: [ 1, 0, 0, 0, 1, 0, 0, 0, 1]
 publish:
     path_en:  false
     scan_publish_en:  true       # false: close all the point cloud output
