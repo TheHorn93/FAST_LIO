@@ -55,8 +55,8 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, typename
 
     switch (lidar_type)
     {
-    case OUST64:
-        oust64_handler( msg);
+    case OUSTER:
+        ouster_handler( msg);
         break;
 
     case HESAI32:
@@ -194,7 +194,318 @@ Scalar project_col ( const Scalar & y, const Scalar & x )
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 //#endif
-void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
+
+template <typename Scalar>
+double scharr ( const Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> & img )
+{
+    using GradientType = Scalar;
+    static constexpr int scharr_blurr_w1 = 47;
+    static constexpr int scharr_blurr_2w1 = 94;
+    static constexpr int scharr_blurr_w2 = 162;
+    static constexpr int scharr_blurr_norm = 256;
+    static constexpr float inv_scharr_blurr_norm = 1.f/scharr_blurr_norm;
+    static constexpr int scharr_norm = 512;
+
+    Eigen::Matrix<Scalar,Eigen::Dynamic, Eigen::Dynamic> grad_helper = img; grad_helper.setZero();
+    Eigen::Matrix<Scalar,Eigen::Dynamic, Eigen::Dynamic> grady = img; grady.setZero();
+    Eigen::Matrix<Scalar,Eigen::Dynamic, Eigen::Dynamic> gradx = img; gradx.setZero();
+    Scalar * grad_helper_ptr = grad_helper.data();
+    Scalar * gradx_ptr = gradx.data();
+    Scalar * grady_ptr = grady.data();
+    const Scalar * img_ptr = img.data();
+
+
+    const int height = img.rows(), width = img.cols();
+    // Compute gradx.
+    // deriveX(blurY(patch))
+
+    // blurY first:
+    for (uint32_t ii = 1; ii < height-1; ++ii) {
+        for (uint32_t jj = 0; jj < width; ++jj) {
+            int idx = ii * width + jj;
+
+            GradientType left =  img_ptr[idx - width];
+            GradientType mid  =  img_ptr[idx];
+            GradientType right = img_ptr[idx + width];
+
+            grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                    ( scharr_blurr_2w1 * (right + left) +
+                      scharr_blurr_w2 * mid );
+        }
+    }
+
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        for (uint32_t jj = 1; jj < width - 1; ++jj) {
+            int idx = ii * width + jj;
+            GradientType left = grad_helper_ptr[idx - 1];
+            GradientType right = grad_helper_ptr[idx + 1];
+
+            gradx_ptr[idx] = 0.5f * (right - left);
+        }
+    }
+
+    // Compute gradient for first/last columns using forward/backward differences.
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        // First column (forward difference).
+        float left = img_ptr[ii * width];
+        float right = img_ptr[ii * width + 1];
+        gradx_ptr[ii * width] = right - left;
+
+        // Last column (backward difference).
+        left = img_ptr[ii * width + width - 2];
+        right = img_ptr[ii * width + width - 1];
+        gradx_ptr[ii * width + width - 1] = right - left;
+    }
+
+    // blurX, then derive Y
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        for (uint32_t jj = 1; jj < width - 1; ++jj) {
+            int idx = ii * width + jj;
+
+            GradientType left =  img_ptr[idx - 1];
+            GradientType mid  =  img_ptr[idx];
+            GradientType right = img_ptr[idx + 1];
+
+            grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                    ( scharr_blurr_2w1 * (right + left) +
+                      scharr_blurr_w2 * mid );
+        }
+    }
+
+    // Compute grady.
+    for (uint32_t ii = 1; ii < height - 1; ++ii) {
+        for (uint32_t jj = 0; jj < width; ++jj) {
+            int idx = ii * width + jj;
+
+            GradientType up = grad_helper_ptr[idx - width];
+            GradientType down = grad_helper_ptr[idx + width];
+            grady_ptr[idx] = 0.5f * (down - up);
+        }
+    }
+
+    // Compute gradient for first/last rows using forward/backward differences.
+    for (uint32_t ii = 0; ii < width; ++ii) {
+        // First row (forward difference).
+        float up = img_ptr[ii];
+        float down = img_ptr[ii + width];
+        grady_ptr[ii] = down - up;
+
+        // Last row (backward difference).
+        up = img_ptr[(height - 2) * width + ii];
+        down = img_ptr[(height - 1) * width + ii];
+        grady_ptr[(height - 1) * width + ii] = down - up;
+    }
+    return Eigen::Vector2f(gradx(width/2,height / 2),grady(width/2,height / 2)).norm();
+}
+
+template <typename ChannelType, typename GradientType>
+void getScharrGradient(int width, int height, const ChannelType* img_ptr,
+                        GradientType* gradx_ptr, GradientType* grady_ptr,
+                        GradientType* grad_helper_ptr) {
+
+    static constexpr int scharr_blurr_w1 = 47;
+    static constexpr int scharr_blurr_2w1 = 94;
+    static constexpr int scharr_blurr_w2 = 162;
+    static constexpr int scharr_blurr_norm = 256;
+    //static constexpr int scharr_norm = 512;
+
+//    static constexpr int scharr_blurr_w1 = 3;
+//    static constexpr int scharr_blurr_2w1 = 6;
+//    static constexpr int scharr_blurr_w2 = 10;
+//    static constexpr int scharr_blurr_norm = 16;
+    //static constexpr int scharr_norm = 32;
+
+    static constexpr float inv_scharr_blurr_norm = 1.f/scharr_blurr_norm;
+    static constexpr float inv_scharr_derive_norm = 0.5f; //= 1.f/scharr_derive_norm;
+
+//    int max_elem = width * height;
+//    ROS_INFO_STREAM("w: " << width << " h: " << height << " max: " << max_elem );
+//    for ( int i = 0; i < max_elem; ++i )
+//        grad_helper_ptr[i] = std::numeric_limits<GradientType>::signaling_NaN();
+
+    // Compute gradx = deriveX(blurY(patch))
+
+    // blurY first:
+    for (uint32_t ii = 1; ii < height - 1; ++ii) {
+        for (uint32_t jj = 0; jj < width; ++jj) {
+            int idx = ii * width + jj;
+
+            GradientType up =  img_ptr[idx - width];
+            GradientType mid  =  img_ptr[idx];
+            GradientType down = img_ptr[idx + width];
+
+            //if ( (idx-width) < 0 ) throw std::runtime_error("nope!");
+            //if ( (idx+width) >= max_elem ) throw std::runtime_error("nope!");
+
+            grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                    ( scharr_blurr_w1 * (up + down) +
+                      scharr_blurr_w2 * mid );
+        }
+    }
+    // first row
+    for (uint32_t jj = 0; jj < width; ++jj) {
+        int idx = 0 * width + jj;
+        GradientType mid  =  img_ptr[idx];
+        GradientType down = img_ptr[idx + width];
+        grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                ( scharr_blurr_2w1 * mid +
+                  scharr_blurr_w2 * down );
+        //if ( (idx+width) >= max_elem ) throw std::runtime_error("nope!");
+    }
+    // last row:
+    for (uint32_t jj = 0; jj < width; ++jj) {
+        int idx = (height-1) * width + jj;
+        GradientType up = img_ptr[idx - width];
+        GradientType mid  =  img_ptr[idx];
+        grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                ( scharr_blurr_2w1 * mid +
+                  scharr_blurr_w2 * up);
+        //if ( (idx-width) < 0 ) throw std::runtime_error("nope!");
+        //if ( idx >= max_elem ) throw std::runtime_error("nope!");
+    }
+    //for ( int i = 0; i < max_elem; ++i )
+    //{
+    //    if ( ! std::isfinite(img_ptr[i]) || std::isinf(img_ptr[i]) || std::isnan(img_ptr[i]) ) ROS_ERROR_STREAM("i: i: " << img_ptr[i]);
+    //    if ( ! std::isfinite(grad_helper_ptr[i])|| std::isinf(grad_helper_ptr[i]) || std::isnan(grad_helper_ptr[i]) ) ROS_ERROR_STREAM("i: " << i << " g: " << grad_helper_ptr[i] << " c: " << (i%width) << " r: " << (i/width));
+    //}
+
+    // deriveX
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        for (uint32_t jj = 1; jj < width - 1; ++jj) {
+            int idx = ii * width + jj;
+            GradientType left = grad_helper_ptr[idx - 1];
+            GradientType right = grad_helper_ptr[idx + 1];
+            gradx_ptr[idx] = inv_scharr_derive_norm * (right - left);
+
+            //if ( (idx-1) < 0 ) throw std::runtime_error("nope!");
+            //if ( (idx+1) >= max_elem ) throw std::runtime_error("nope!");
+        }
+    }
+
+    // Compute gradient for first/last columns using forward/backward differences.
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        // First column (forward difference).
+        int idx = ii * width;
+        float left = img_ptr[idx];
+        float right = img_ptr[idx + 1];
+        gradx_ptr[idx] = right - left;
+        //if ( (ii * width) < 0 ) throw std::runtime_error("nope!");
+
+        // Last column (backward difference).
+        idx = ii * width + width - 1;
+        left = img_ptr[idx - 1];
+        right = img_ptr[idx];
+        gradx_ptr[idx] = right - left;
+
+        //if ( (ii * width + width - 1) >= max_elem ) throw std::runtime_error("nope!");
+    }
+
+    //for ( int i = 0; i < max_elem; ++i )
+    //    grad_helper_ptr[i] = std::numeric_limits<GradientType>::signaling_NaN();
+
+    // blurX, then derive Y
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        for (uint32_t jj = 1; jj < width - 1; ++jj) {
+            int idx = ii * width + jj;
+            GradientType left =  img_ptr[idx - 1];
+            GradientType mid  =  img_ptr[idx];
+            GradientType right = img_ptr[idx + 1];
+            grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                    ( scharr_blurr_w1 * (right + left) +
+                      scharr_blurr_w2 * mid );
+            //if ( (idx-1) < 0 ) throw std::runtime_error("nope!");
+            //if ( (idx+1) >= max_elem ) throw std::runtime_error("nope!");
+        }
+    }
+    // blurX: first col:
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        int idx = ii * width + 0;
+        GradientType mid  =  img_ptr[idx];
+        GradientType right = img_ptr[idx + 1];
+        grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                ( scharr_blurr_2w1 * right +
+                  scharr_blurr_w2 * mid );
+        //if ( (idx) < 0 ) throw std::runtime_error("nope!");
+        //if ( (idx+1) >= max_elem ) throw std::runtime_error("nope!");
+    }
+    // blurX: last col:
+    for (uint32_t ii = 0; ii < height; ++ii) {
+        int idx = ii * width + width-1;
+        GradientType left = img_ptr[idx - 1];
+        GradientType mid  =  img_ptr[idx];
+        grad_helper_ptr[idx] = inv_scharr_blurr_norm *
+                ( scharr_blurr_2w1 * left +
+                  scharr_blurr_w2 * mid );
+        //if ( (idx-1) < 0 ) throw std::runtime_error("nope!");
+        //if ( (idx) >= max_elem ) throw std::runtime_error("nope!");
+    }
+
+//    for ( int i = 0; i < max_elem; ++i )
+//    {
+//        if ( ! std::isfinite(img_ptr[i])|| std::isinf(img_ptr[i]) || std::isnan(img_ptr[i]) ) ROS_ERROR_STREAM("2i: i: " << img_ptr[i]);
+//        if ( ! std::isfinite(grad_helper_ptr[i])|| std::isinf(grad_helper_ptr[i]) || std::isnan(grad_helper_ptr[i]) ) ROS_ERROR_STREAM("2i: g: " << grad_helper_ptr[i]);
+//    }
+
+    // Compute grady.
+    for (uint32_t ii = 1; ii < height - 1; ++ii) {
+        for (uint32_t jj = 0; jj < width; ++jj) {
+            int idx = ii * width + jj;
+            GradientType up = grad_helper_ptr[idx - width];
+            GradientType down = grad_helper_ptr[idx + width];
+            grady_ptr[idx] = inv_scharr_derive_norm * (down - up);
+            //if ( (idx-width) < 0 ) throw std::runtime_error("nope!");
+            //if ( (idx+width) >= max_elem ) throw std::runtime_error("nope!");
+        }
+    }
+
+    // Compute gradient for first/last rows using forward/backward differences.
+    for (uint32_t ii = 0; ii < width; ++ii) {
+        // First row (forward difference).
+        float up = img_ptr[ii];
+        float down = img_ptr[ii + width];
+        grady_ptr[ii] = down - up;
+
+        // Last row (backward difference).
+        up = img_ptr[(height - 2) * width + ii];
+        down = img_ptr[(height - 1) * width + ii];
+        grady_ptr[(height - 1) * width + ii] = down - up;
+
+        //if ( (ii) < 0 ) throw std::runtime_error("nope!");
+        //if ( ((height - 1) * width + ii) >= max_elem ) throw std::runtime_error("nope!");
+    }
+}
+
+template <typename ChannelType, typename GradientType>
+void getScharrGradient(const cv::Mat_<ChannelType>& img,
+                        cv::Mat_<GradientType>* gradx,
+                        cv::Mat_<GradientType>* grady) {
+  int width = img.cols;
+  int height = img.rows;
+
+  // Allocate outputs if needed.
+  if (gradx->empty()) {
+    gradx->create(height, width);
+  }
+  if (grady->empty()) {
+    grady->create(height, width);
+  }
+  cv::Mat_<GradientType> grad_helper(height, width);
+
+//  FLAME_ASSERT(img.isContinuous());
+//  FLAME_ASSERT(gradx->isContinuous());
+//  FLAME_ASSERT(grady->isContinuous());
+//  FLAME_ASSERT(grad_helper.isContinuous());
+
+  // Grab raw pointers to data.
+  const ChannelType* img_ptr = reinterpret_cast<ChannelType*>(img.data);
+  GradientType* gradx_ptr = reinterpret_cast<GradientType*>(gradx->data);
+  GradientType* grady_ptr = reinterpret_cast<GradientType*>(grady->data);
+  GradientType* grad_helper_ptr = reinterpret_cast<GradientType*>(grad_helper.data);
+
+  getScharrGradient<ChannelType, GradientType>(width, height, img_ptr,
+                                                gradx_ptr, grady_ptr, grad_helper_ptr);
+}
+void Preprocess::ouster_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
     //static const double max_ref = std::pow( 2, 16 )-1;
     max_curvature = 0;
@@ -235,9 +546,11 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
     else
     {
         float max_int = -1, max_refl = -1;
-        constexpr int height = 128;
+        const int height = N_SCANS;
         constexpr int width = 1024;
+        const int32_t*  os_shifter = N_SCANS == 128 ? os_shift::pixel_shift_by_row128 : os_shift::pixel_shift_by_row64;
         constexpr bool printcomp = false, print_info = false;
+        cv::Mat_<float> img_m = cv::Mat_<float>::zeros(height,width);
         cv::Mat img, imgc, imgi;
         if constexpr ( printcomp )
         {
@@ -246,12 +559,11 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             imgi = cv::Mat::zeros(height, width, CV_8UC1);
         }
         pl_full.resize(plsize);
-        int offset = 0, row = 0, col = 0, last_i = 0;
-        for (int i = 0; i < plsize; ++i, ++col)
+        for (int i = 0, offset = 0, row = 0, col = 0; i < plsize; ++i, ++col)
         {
             if ( row >= height ) { row = 0; offset = row * width; }
             if ( col >= width ) { col = 0; ++row; offset = row * width; }
-            const int comp_col = os_shift::inverseCompensateColPos1024( row, col );
+            const int comp_col = os_shift::inverseCompensateColPos1024( row, col, os_shifter );
             const int comp_idx = offset + comp_col;
 
             PointType & added_pt = pl_full[comp_idx];
@@ -269,8 +581,12 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             added_pt.curvature = pl_orig.points[i].t * time_unit_scale; // curvature unit: ms
             if ( added_pt.curvature > max_curvature ) max_curvature = added_pt.curvature;
 
+            img_m.at<float>(row,comp_col) = added_pt.intensity;
+
             if constexpr ( printcomp )
             {
+                if ( !std::isfinite(added_pt.intensity) ) ROS_ERROR_STREAM("how? " << added_pt.intensity << " r: " <<  added_pt.x << " " <<  added_pt.y << " " <<  added_pt.z );
+
                 const float draw_range = std::min<float>(255.f,25.f* std::sqrt(added_pt.x * added_pt.x +added_pt.y * added_pt.y + added_pt.z * added_pt.z));
                 img.at<uchar>(row,col) = uchar(draw_range);
                 imgc.at<uchar>(row,comp_col) = uchar(draw_range);
@@ -278,11 +594,27 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
                 const float draw_int = std::min<float>(255.f, 255.f * added_pt.intensity);
                 imgi.at<uchar>(row,comp_col) = uchar(draw_int);
 
+                if constexpr ( print_info )
                 if ( (i & 511) == 0 )
                 {
                     ROS_INFO_STREAM("c: " << col << " r: " << row << " cc: " << comp_col << " o: "<< offset << " ci: " << comp_idx << " d: " << draw_range );
                 }
             }
+        }
+
+        cv::Mat_<float> gradx, grady, gradm;
+        getScharrGradient<float,float>( img_m, &gradx, &grady );
+        cv::sqrt(gradx.mul(gradx) + grady.mul(grady),gradm);
+        int offset = 0, row = 0, col = 0, last_i = 0;
+        for (int i = 0; i < plsize; ++i, ++col)
+        {
+            if ( row >= height ) { row = 0; offset = row * width; }
+            if ( col >= width ) { col = 0; ++row; offset = row * width; }
+            const int comp_col = os_shift::inverseCompensateColPos1024( row, col, os_shifter );
+            const int comp_idx = offset + comp_col;
+
+            PointType & added_pt = pl_full[comp_idx];
+            added_pt.gradient_mag = gradm.at<float>(row,comp_col);
 
             if (i % point_filter_num != 0) continue;
             if ( !isValidPoint( pl_orig.points[i] ) ) continue;
@@ -305,6 +637,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             last_i = i;
             pl_surf.points.emplace_back(added_pt);
         }
+
         if constexpr ( print_info )
         {
             ROS_INFO_STREAM("max_curv: " << max_curvature << " last: " << pl_surf.points.back().curvature << " ( " << last_i << " ) ti: " << pl_orig.points[last_i].t << " te: " << pl_orig.points.back().t);
@@ -327,7 +660,7 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
                 const float range = std::sqrt(added_pt.x * added_pt.x +added_pt.y * added_pt.y + added_pt.z * added_pt.z);
                 const float draw_range = std::min<float>(255.f,25.f* range);
 
-
+                if constexpr ( print_info )
                 if ( (i & 511) == 0 && range > 0.1 )
                 {
                     const float prow = (height-1) - project_row<float> ( added_pt.z, range );
@@ -339,6 +672,42 @@ void Preprocess::oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             }
             cv::imwrite("./ranged.png",imgd);
             // pl_full is now correctly ordered!
+
+
+            cv::Mat_<float> imgi2;
+            imgi.assignTo(imgi2,CV_32FC1);
+            cv::Mat_<float> gradx;
+            cv::Mat_<float> grady;
+            getScharrGradient<float,float>( imgi2, &gradx, &grady );
+            //gradx *= 55;grady *= 55;
+            cv::Mat_<float> gradm;
+            cv::sqrt(gradx.mul(gradx) + grady.mul(grady),gradm);
+//            gradm *= 32;
+//            gradx *= 32;
+//            grady *= 32;
+
+            double minV = 0, maxV = 0, minVs = 0, maxVs = 0;
+            cv::minMaxLoc(gradm, &minV, &maxV);
+//            cv::Mat imgx, imgy, imgm;
+//            gradx.assignTo(imgx,CV_8UC1);
+//            grady.assignTo(imgy,CV_8UC1);
+//            gradm.assignTo(imgm,CV_8UC1);
+            cv::imwrite("./rangedx.png",gradx);
+            cv::imwrite("./rangedy.png",grady);
+            cv::imwrite("./rangedm.png",gradm);
+            cv::Mat grad_x, grad_y;
+            //cv::Sobel(imgi2, grad_x, CV_32FC1, 1, 0, 3, 1, 0, cv::BORDER_DEFAULT);
+            //cv::Sobel(imgi2, grad_y, CV_32FC1, 0, 1, 3, 1, 0, cv::BORDER_DEFAULT);
+            cv::Scharr(imgi2, grad_x, CV_32FC1, 1, 0);
+            cv::Scharr(imgi2, grad_y, CV_32FC1, 0, 1);
+            cv::imwrite("./rangedsx.png",grad_x);
+            cv::imwrite("./rangedsy.png",grad_y);
+            cv::Mat grad_m;
+            cv::sqrt(grad_x.mul(grad_x) + grad_y.mul(grad_y), grad_m);
+            cv::minMaxLoc(grad_m, &minVs, &maxVs);
+            cv::imwrite("./rangedsm.png",grad_m);
+
+            ROS_INFO_STREAM("vals: " << minV << " " << minVs << " " << maxV << " " << maxVs );
         }
 
     }

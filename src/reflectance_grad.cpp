@@ -2,6 +2,7 @@
 
 namespace reflectance
 {
+constexpr bool ignore_min_refl = true;
 
 Eigen::Vector3d projectPtToPlane( const Eigen::Vector3d& pt_pos, const Eigen::Vector3d& plane_anchor, const Eigen::Vector3d& normal )
 {
@@ -267,7 +268,9 @@ bool IrregularGrid::computeErrorAndGradientPlane3DTPS( const PointType& pt, cons
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
 
-    if ( further_away || min_intensity < min_reflectance ) return false;
+    if constexpr ( ! ignore_min_refl )
+    if ( min_intensity < min_reflectance ) return false;
+    if ( further_away ) return false;
 
     const Eigen::Matrix<double,4+NUM_MATCH_POINTS, 1> lambda = getTPS3D( pts_near, pts_near_proj );
 
@@ -383,8 +386,9 @@ bool IrregularGrid::computeErrorAndGradientPlane2DTPS( const PointType& pt, cons
         if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
-    if ( further_away || min_intensity < min_reflectance )
-        return false;
+    if constexpr ( ! ignore_min_refl )
+    if ( min_intensity < min_reflectance ) return false;
+    if ( further_away ) return false;
 
     const Eigen::Matrix<double,3+NUM_MATCH_POINTS, 1> lambda = getTPS( pts_near, pts_near_proj );
 
@@ -488,8 +492,9 @@ bool IrregularGrid::computeErrorAndGradientPlane( const PointType& pt, const Poi
         if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
-    if ( further_away || min_intensity < min_reflectance )
-        return false;
+    if constexpr ( ! ignore_min_refl )
+    if ( min_intensity < min_reflectance ) return false;
+    if ( further_away ) return false;
 
     const Eigen::Matrix<double, 6, 1> lambda = getPolynomial( pts_near, pts_near_proj );
     const double int_at_pos = getIntensityFromPosOnPlane( pt_pos_rot, lambda );
@@ -568,7 +573,6 @@ bool IrregularGrid::computeErrorAndGradientPlane( const PointType& pt, const Poi
 
 bool IrregularGrid::computeErrorAndGradient3D( const PointType& pt, const PointVector& pts_near, double & error, Eigen::Vector3d& grad_out, double & value )
 {
-
     constexpr bool print_info = false;
     const Eigen::Vector3d pt_3d( pt.x, pt.y, pt.z );
 
@@ -589,9 +593,9 @@ bool IrregularGrid::computeErrorAndGradient3D( const PointType& pt, const PointV
         if ( pts_near[i].intensity < min_intensity ) min_intensity = pts_near[i].intensity;
         if ( pts_near[i].intensity > max_intensity ) max_intensity = pts_near[i].intensity;
     }
-    if ( //further_away ||
-         min_intensity < min_reflectance )
-        return false;
+    if constexpr ( ! ignore_min_refl )
+    if ( min_intensity < min_reflectance ) return false;
+    //if ( further_away ) return false;
 
     const Eigen::Matrix<double,4+NUM_MATCH_POINTS, 1> lambda = getTPS3D( pts_near, pts_near_3d );
 

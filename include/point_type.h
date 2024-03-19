@@ -97,6 +97,7 @@ struct EIGEN_ALIGN16 PointType
       float curvature;
       float reflectance;
       float gloss;
+      float gradient_mag;
       float intensity_count;
       float intensity_variance;
     };
@@ -116,6 +117,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT( PointType,
   (float, curvature, curvature)
   (float, reflectance, reflectance)
   (float, gloss, gloss)
+  (float, gradient_mag, gradient_mag)
   (float, intensity_count, intensity_count)
   (float, intensity_variance, intensity_variance)
 )

@@ -45,171 +45,6 @@
 #include "voxel_grid.h"
 #include  <boost/sort/spreadsort/integer_sort.hpp>
 
-///////////////////////////////////////////////////////////////////////////////////////////
-//template <typename PointT> void
-//pcl::getMinMax3D (const typename pcl::PointCloud<PointT>::ConstPtr &cloud,
-//                  const std::string &distance_field_name, float min_distance, float max_distance,
-//                  Eigen::Vector4f &min_pt, Eigen::Vector4f &max_pt, bool limit_negative)
-//{
-//  Eigen::Array4f min_p, max_p;
-//  min_p.setConstant (std::numeric_limits<float>::max());
-//  max_p.setConstant (std::numeric_limits<float>::lowest());
-
-//  // Get the fields list and the distance field index
-//  std::vector<pcl::PCLPointField> fields;
-//  int distance_idx = pcl::getFieldIndex<PointT> (distance_field_name, fields);
-//  if (distance_idx < 0 || fields.empty()) {
-//    PCL_ERROR ("[pcl::getMinMax3D] Could not find field with name '%s'!\n", distance_field_name.c_str());
-//    return;
-//  }
-//  const auto field_offset = fields[distance_idx].offset;
-
-//  float distance_value;
-//  // If dense, no need to check for NaNs
-//  if (cloud->is_dense)
-//  {
-//    for (const auto& point: *cloud)
-//    {
-//      // Get the distance value
-//      const auto* pt_data = reinterpret_cast<const std::uint8_t*> (&point);
-//      memcpy (&distance_value, pt_data + field_offset, sizeof (float));
-
-//      if (limit_negative)
-//      {
-//        // Use a threshold for cutting out points which inside the interval
-//        if ((distance_value < max_distance) && (distance_value > min_distance))
-//          continue;
-//      }
-//      else
-//      {
-//        // Use a threshold for cutting out points which are too close/far away
-//        if ((distance_value > max_distance) || (distance_value < min_distance))
-//          continue;
-//      }
-//      // Create the point structure and get the min/max
-//      pcl::Array4fMapConst pt = point.getArray4fMap ();
-//      min_p = min_p.min (pt);
-//      max_p = max_p.max (pt);
-//    }
-//  }
-//  else
-//  {
-//    for (const auto& point: *cloud)
-//    {
-//      // Get the distance value
-//      const auto* pt_data = reinterpret_cast<const std::uint8_t*> (&point);
-//      memcpy (&distance_value, pt_data + field_offset, sizeof (float));
-
-//      if (limit_negative)
-//      {
-//        // Use a threshold for cutting out points which inside the interval
-//        if ((distance_value < max_distance) && (distance_value > min_distance))
-//          continue;
-//      }
-//      else
-//      {
-//        // Use a threshold for cutting out points which are too close/far away
-//        if ((distance_value > max_distance) || (distance_value < min_distance))
-//          continue;
-//      }
-
-//      // Check if the point is invalid
-//      if (!isXYZFinite (point))
-//        continue;
-//      // Create the point structure and get the min/max
-//      pcl::Array4fMapConst pt = point.getArray4fMap ();
-//      min_p = min_p.min (pt);
-//      max_p = max_p.max (pt);
-//    }
-//  }
-//  min_pt = min_p;
-//  max_pt = max_p;
-//}
-
-/////////////////////////////////////////////////////////////////////////////////////////////
-//template <typename PointT> void
-//pcl::getMinMax3D (const typename pcl::PointCloud<PointT>::ConstPtr &cloud,
-//                  const Indices &indices,
-//                  const std::string &distance_field_name, float min_distance, float max_distance,
-//                  Eigen::Vector4f &min_pt, Eigen::Vector4f &max_pt, bool limit_negative)
-//{
-//  Eigen::Array4f min_p, max_p;
-//  min_p.setConstant (std::numeric_limits<float>::max());
-//  max_p.setConstant (std::numeric_limits<float>::lowest());
-
-//  // Get the fields list and the distance field index
-//  std::vector<pcl::PCLPointField> fields;
-//  int distance_idx = pcl::getFieldIndex<PointT> (distance_field_name, fields);
-//  if (distance_idx < 0 || fields.empty()) {
-//    PCL_ERROR ("[pcl::getMinMax3D] Could not find field with name '%s'!\n", distance_field_name.c_str());
-//    return;
-//  }
-//  const auto field_offset = fields[distance_idx].offset;
-
-//  float distance_value;
-//  // If dense, no need to check for NaNs
-//  if (cloud->is_dense)
-//  {
-//    for (const auto &index : indices)
-//    {
-//      // Get the distance value
-//      const auto* pt_data = reinterpret_cast<const std::uint8_t*> (&(*cloud)[index]);
-//      memcpy (&distance_value, pt_data + field_offset, sizeof (float));
-
-//      if (limit_negative)
-//      {
-//        // Use a threshold for cutting out points which inside the interval
-//        if ((distance_value < max_distance) && (distance_value > min_distance))
-//          continue;
-//      }
-//      else
-//      {
-//        // Use a threshold for cutting out points which are too close/far away
-//        if ((distance_value > max_distance) || (distance_value < min_distance))
-//          continue;
-//      }
-//      // Create the point structure and get the min/max
-//      pcl::Array4fMapConst pt = (*cloud)[index].getArray4fMap ();
-//      min_p = min_p.min (pt);
-//      max_p = max_p.max (pt);
-//    }
-//  }
-//  else
-//  {
-//    for (const auto &index : indices)
-//    {
-//      // Get the distance value
-//      const auto* pt_data = reinterpret_cast<const std::uint8_t*> (&(*cloud)[index]);
-//      memcpy (&distance_value, pt_data + field_offset, sizeof (float));
-
-//      if (limit_negative)
-//      {
-//        // Use a threshold for cutting out points which inside the interval
-//        if ((distance_value < max_distance) && (distance_value > min_distance))
-//          continue;
-//      }
-//      else
-//      {
-//        // Use a threshold for cutting out points which are too close/far away
-//        if ((distance_value > max_distance) || (distance_value < min_distance))
-//          continue;
-//      }
-
-//      // Check if the point is invalid
-//      if (!std::isfinite ((*cloud)[index].x) ||
-//          !std::isfinite ((*cloud)[index].y) ||
-//          !std::isfinite ((*cloud)[index].z))
-//        continue;
-//      // Create the point structure and get the min/max
-//      pcl::Array4fMapConst pt = (*cloud)[index].getArray4fMap ();
-//      min_p = min_p.min (pt);
-//      max_p = max_p.max (pt);
-//    }
-//  }
-//  min_pt = min_p;
-//  max_pt = max_p;
-//}
-
 struct cloud_point_index_idx1
 {
   unsigned int idx;
@@ -223,24 +58,23 @@ struct cloud_point_index_idx1
 namespace pcl
 {
 
-//namespace traits
-//{
-//template <typename PointT>
-//  struct has_reflectance : has_field<PointT, pcl::fields::reflectance>
-//  { };
-
-//  template <typename PointT>
-//  constexpr auto has_reflectance_v = has_reflectance<PointT>::value;
-
-//  template <typename PointT>
-//  using HasReflectance = std::enable_if_t<has_reflectance_v<PointT>, bool>;
-
-//  template <typename PointT>
-//  using HasNoReflectance = std::enable_if_t<!has_reflectance_v<PointT>, bool>;
-//};
-
 namespace detail
   {
+    struct AccumulatorGradientMagNoNull
+    {
+
+      // Requires that point type has intensity field
+      using IsCompatible = pcl::traits::has_intensity<boost::mpl::_1>;
+
+      // Storage
+      float gradient_mag = 0;
+
+      template <typename PointT> void
+      add (const PointT& t) { if ( t.intensity > min_reflectance ) gradient_mag += t.gradient_mag; }
+
+      template <typename PointT> void
+      get (PointT& t, std::size_t n) const { t.gradient_mag = gradient_mag / n; }
+    };
     struct AccumulatorIntensityNoNull
     {
 
@@ -273,22 +107,6 @@ namespace detail
       get (PointT& t, std::size_t n) const { t.intensity_count = intensity_count; }
     };
 
-//struct AccumulatorReflectanceNoNull
-//    {
-
-//      // Requires that point type has intensity field
-//      using IsCompatible = pcl::traits::has_reflectance<boost::mpl::_1>;
-
-//      // Storage
-//      float intensity = 0;
-
-//      template <typename PointT> void
-//      add (const PointT& t) { if ( t.reflectance > min_reflectance ) reflectance += t.reflectance; }
-
-//      template <typename PointT> void
-//      get (PointT& t, std::size_t n) const { t.reflectance = reflectance / n; }
-
-//    };
 template <typename PointT>
     struct AccumulatorsNoNull
     {
@@ -299,6 +117,7 @@ template <typename PointT>
               AccumulatorXYZ
             , AccumulatorNormal
             , AccumulatorCurvature
+            , AccumulatorGradientMagNoNull
             , AccumulatorIntensityNoNull
             , AccumulatorIntensityCountNoNull
             //, AccumulatorReflectanceNoNull
@@ -663,4 +482,3 @@ pcl::VoxelGrid1<PointT>::applyFilter (PointCloud &output)
 }
 
 #define PCL_INSTANTIATE_VoxelGrid1(T) template class PCL_EXPORTS pcl::VoxelGrid1<T>;
-//#define PCL_INSTANTIATE_getMinMax3D(T) template PCL_EXPORTS void pcl::getMinMax3D<T> (const pcl::PointCloud<T>::ConstPtr &, const std::string &, float, float, Eigen::Vector4f &, Eigen::Vector4f &, bool);

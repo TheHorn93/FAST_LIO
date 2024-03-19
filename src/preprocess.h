@@ -12,7 +12,7 @@ typedef pcl::PointCloud<PointType> PointCloudXYZI;
 typedef pcl::PointCloud<ouster_ros::Point> PointCloudOuster;
 typedef pcl::PointCloud<hesai_ros::Point> PointCloudHesai;
 
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI32}; //{1, 2, 3, 4}
+enum LID_TYPE{AVIA = 1, VELO16, OUSTER, HESAI32}; //{1, 2, 3, 4}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 
 class Preprocess
@@ -43,7 +43,7 @@ class Preprocess
 
   private:
   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
-  void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void ouster_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void hesai32_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void pub_func(PointCloudXYZI &pl, const ros::Time &ct);

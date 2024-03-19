@@ -35,30 +35,25 @@
 #include <omp.h>
 #include <mutex>
 #include <math.h>
-//#include <thread>
 #include <fstream>
 #include <csignal>
 #include <unistd.h>
-//#include <Python.h>
-//#include <so3_math.h>
 #include <ros/ros.h>
 #include <Eigen/Core>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include "IMU_Processing.h"
-//#include <visualization_msgs/Marker.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
-//#include <geometry_msgs/Vector3.h>
 #include <livox_ros_driver/CustomMsg.h>
 #include "preprocess.h"
-//#include "input_pcl_filter.h"
 #include <ikd-Tree/ikd-Tree/ikd_Tree.h>
 #include "reflectance_grad.h"
 #include "voxel_grid.h"
-//#define COMP_ONLY
 #include <cv_bridge/cv_bridge.h>
+#include "pcl/filters/crop_box.h"
+
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -142,6 +137,8 @@ std::shared_ptr<std::vector<bool>> corr_int_selected = std::make_shared<std::vec
 std::string comp_type, comp_params;
 
 pcl::VoxelGrid1<PointType> downSizeFilterSurf;
+pcl::VoxelGrid1<PointType> downSizeFilterSurfFine;
+pcl::VoxelGrid1<PointType> downSizeFilterSurfCoarse;
 
 KD_TREE<PointType> ikdtree;
 
@@ -276,6 +273,7 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     po->intensity = pi->intensity;
     po->reflectance = pi->reflectance;
     po->intensity_count = pi->intensity_count;
+    po->gradient_mag = pi->gradient_mag;
 }
 
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
@@ -289,6 +287,7 @@ void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
     po->intensity = pi->intensity;
     po->reflectance = pi->reflectance;
     po->intensity_count = pi->intensity_count;
+    po->gradient_mag = pi->gradient_mag;
 }
 
 void points_cache_collect()
@@ -371,7 +370,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     max_curvature_buffer.emplace_back(p_pre->max_curvature);
     if ( store_compensated_ && p_pre_raw )
     {
-        if  ( p_pre->lidar_type == OUST64 )
+        if  ( p_pre->lidar_type == OUSTER )
         {
             PointCloudOuster::Ptr ptr_raw(new PointCloudOuster());
             p_pre_raw->process<PointCloudOuster>(msg, ptr_raw, min_ref_threshold);
@@ -583,6 +582,7 @@ void map_incremental()
             feats_down_world->points[i].intensity = 0;
             feats_down_world->points[i].reflectance = 0;
             feats_down_world->points[i].intensity_count = 0;
+            feats_down_world->points[i].gradient_mag = 0;
         }
         else
         {
@@ -606,7 +606,8 @@ void map_incremental()
                 continue;
             }
 
-            PointToAdd.push_back(feats_down_world->points[i]); continue;
+            PointToAdd.push_back(feats_down_world->points[i]);
+            continue;
 
             for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i ++)
             {
@@ -684,23 +685,25 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     if(scan_pub_en && pubLaserCloudFull.getNumSubscribers() > 0)
     {
         constexpr bool print_info = false;
-        float maxVal = 0, maxValI = 0;
+        float maxVal = 0, maxValI = 0, maxValG = 0;
         if constexpr ( print_info )
         {
             for (int i = 0; i < feats_undistort->size(); i++)
             {
                 if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
                 if ( maxVal < feats_undistort->points[i].reflectance ) maxVal = feats_undistort->points[i].reflectance;
+                if ( maxValG < feats_undistort->points[i].gradient_mag ) maxValG = feats_undistort->points[i].gradient_mag;
             }
-            std::cout << "maxPubVal: " << maxVal << " I: " << maxValI << std::endl;
-            maxVal = 0; maxValI = 0;
+            std::cout << "maxPubVal: " << maxVal << " I: " << maxValI << " G: " << maxValG << std::endl;
+            maxVal = 0; maxValI = 0; maxValG = 0;
             for (int i = 0; i < feats_down_body->size(); i++)
             {
                 if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
                 if ( maxVal < feats_down_body->points[i].reflectance ) maxVal = feats_down_body->points[i].reflectance;
+                if ( maxValG < feats_down_body->points[i].gradient_mag ) maxValG = feats_down_body->points[i].gradient_mag;
             }
-            std::cout << "maxPubVal: " << maxVal << " I: " << maxValI << std::endl;
-            maxVal = 0; maxValI = 0;
+            std::cout << "maxPubVal: " << maxVal << " I: " << maxValI << " G: " << maxValG << std::endl;
+            maxVal = 0; maxValI = 0; maxValG = 0;
         }
 
         PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
@@ -708,16 +711,17 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         PointCloudXYZI::Ptr laserCloudWorld( \
                         new PointCloudXYZI(size, 1));
 
-        //float maxVal = 0, maxValI = 0;
+        maxVal = 0; maxValI = 0; maxValG = 0;
         for (int i = 0; i < size; i++)
         {
             RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
                                 &laserCloudWorld->points[i]);
             if ( maxValI < laserCloudWorld->points[i].intensity ) maxValI = laserCloudWorld->points[i].intensity;
             if ( maxVal < laserCloudWorld->points[i].reflectance ) maxVal = laserCloudWorld->points[i].reflectance;
+            if ( maxValG < laserCloudWorld->points[i].gradient_mag ) maxValG = laserCloudWorld->points[i].gradient_mag;
         }
         if constexpr ( print_info )
-        ROS_INFO_STREAM_THROTTLE(1, "maxPubVal: " << maxVal << " I: " << maxValI);
+        ROS_INFO_STREAM_THROTTLE(1, "maxPubVal: " << maxVal << " I: " << maxValI << " G: " << maxValG );
         sensor_msgs::PointCloud2 laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
@@ -969,6 +973,7 @@ void h_share_model_with_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datas
         point_world.intensity = point_body.intensity;
         //std::cout << "pt_W_i=" << point_body.intensity << ", pt_W_r=" << point_body.reflectance << std::endl;
         point_world.reflectance = point_body.intensity;
+        point_world.gradient_mag = point_body.gradient_mag;
 
 
         vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
@@ -1003,6 +1008,7 @@ void h_share_model_with_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datas
                 normvec->points[i].z = pabcd(2);
                 normvec->points[i].intensity = pd2; // will be used for distance to plane
                 normvec->points[i].reflectance = point_body.intensity; // contains either intensity or real reflectivity
+                normvec->points[i].gradient_mag = point_body.gradient_mag;
                 normvec->points[i].gloss = pabcd(3); // store D of plane
                 normvec->points[i].curvature = 
                 res_last[i] = abs(pd2);
@@ -1198,7 +1204,7 @@ void h_share_model_without_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_da
         point_world.intensity = point_body.intensity;
         //std::cout << "pt_W_i=" << point_body.intensity << ", pt_W_r=" << point_body.reflectance << std::endl;
         point_world.reflectance = point_body.intensity;
-
+        point_world.gradient_mag = point_body.gradient_mag;
 
         vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
         PointVector& points_near = Nearest_Points[i];
@@ -1248,6 +1254,7 @@ void h_share_model_without_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_da
                 normvec->points[i].z = pabcd(2);
                 normvec->points[i].intensity = pd2; // will be used for distance to plane
                 normvec->points[i].reflectance = point_body.intensity; // contains either intensity or real reflectivity
+                normvec->points[i].gradient_mag = point_body.gradient_mag;
                 normvec->points[i].gloss = pabcd(3); // store D of plane
                 normvec->points[i].curvature =
                 res_last[i] = abs(pd2);
@@ -1541,6 +1548,8 @@ int main(int argc, char** argv)
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(res_last, -1000.0f, sizeof(res_last));
     downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+    downSizeFilterSurfFine.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+    downSizeFilterSurfCoarse.setLeafSize(filter_size_surf_min*2, filter_size_surf_min*2, filter_size_surf_min*2);
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(point_selected_int, false, sizeof(point_selected_int));
     memset(res_last, -1000.0f, sizeof(res_last));
@@ -1600,6 +1609,8 @@ int main(int argc, char** argv)
             ("/path", 100000);
 
     ros::Publisher pubRefImg = nh.advertise<sensor_msgs::Image>("/refimg", 100);
+    ros::Publisher pubRefCloud = nh.advertise<sensor_msgs::PointCloud2> ("/ref_cloud", 100000);
+    ros::Publisher pubRefCorCloud = nh.advertise<sensor_msgs::PointCloud2> ("/ref_cor_cloud", 100000);
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     ros::Rate rate(5000);
@@ -1660,8 +1671,35 @@ int main(int argc, char** argv)
             lasermap_fov_segment();
 
             /*** downsample the feature points in a scan ***/
-            downSizeFilterSurf.setInputCloud(feats_undistort); // builds pcl::Voxelgrid<PointXYZINormal>, builds equally spaced 3D Grid and filters for centerpoints
-            downSizeFilterSurf.filter(*feats_down_body); // Apply grid filter and write to pcl::PointCloud &feats_down_body
+            constexpr bool close_with_higher_res = true;
+            if constexpr ( close_with_higher_res )
+            {
+                pcl::CropBox<PointType> crop;
+                PointCloudXYZI::Ptr feats_undistort_crop_in( new PointCloudXYZI);
+                PointCloudXYZI::Ptr feats_undistort_crop_out( new PointCloudXYZI );
+                crop.setMin(Eigen::Vector4f::Constant(-10));
+                crop.setMax(Eigen::Vector4f::Constant(10));
+                crop.setInputCloud(feats_undistort);
+                crop.filter(*feats_undistort_crop_in);
+                crop.setNegative(true);
+                crop.filter(*feats_undistort_crop_out);
+
+                PointCloudXYZI feats_down_fine;
+                downSizeFilterSurfFine.setInputCloud(feats_undistort_crop_in); // builds pcl::Voxelgrid<PointXYZINormal>, builds equally spaced 3D Grid and filters for centerpoints
+                downSizeFilterSurfFine.filter(feats_down_fine); // Apply grid filter and write to pcl::PointCloud &feats_down_body
+
+                PointCloudXYZI feats_down_coarse;
+                downSizeFilterSurfCoarse.setInputCloud(feats_undistort_crop_out); // builds pcl::Voxelgrid<PointXYZINormal>, builds equally spaced 3D Grid and filters for centerpoints
+                downSizeFilterSurfCoarse.filter(feats_down_coarse); // Apply grid filter and write to pcl::PointCloud &feats_down_body
+
+
+                *feats_down_body = feats_down_coarse + feats_down_fine;
+            }
+            else
+            {
+                downSizeFilterSurf.setInputCloud(feats_undistort); // builds pcl::Voxelgrid<PointXYZINormal>, builds equally spaced 3D Grid and filters for centerpoints
+                downSizeFilterSurf.filter(*feats_down_body); // Apply grid filter and write to pcl::PointCloud &feats_down_body
+            }
             //feats_down_body = feats_undistort;
 
             //if constexpr ( false )
@@ -1670,7 +1708,10 @@ int main(int argc, char** argv)
             {
                 // disable others...
                 for ( int i = 0; i < feats_down_body->points.size(); ++i )
+                {
                     (*feats_down_body)[i].reflectance = 0;
+                    (*feats_down_body)[i].gradient_mag = 0;
+                }
 
 //                int num_counts_grt_one = 0;
 //                for ( int i = 0; i < feats_down_body->points.size(); ++i )
@@ -1697,20 +1738,22 @@ int main(int argc, char** argv)
             if constexpr ( !false )
             {
                 // voxelgrid filter drops reflectance channel.
-                float maxValR = 0, maxValI = 0;
+                float maxValR = 0, maxValI = 0, maxValG = 0;
                 for (int i = 0; i < feats_undistort->size(); i++)
                 {
                     if ( maxValI < feats_undistort->points[i].intensity ) maxValI = feats_undistort->points[i].intensity;
                     if ( maxValR < feats_undistort->points[i].reflectance ) maxValR = feats_undistort->points[i].reflectance;
+                    if ( maxValG < feats_undistort->points[i].gradient_mag ) maxValG = feats_undistort->points[i].gradient_mag;
                 }
-                ROS_INFO_STREAM_THROTTLE(1,"dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_undistort->size() << " pf: " <<  p_pre->point_filter_num);
-                maxValR = 0; maxValI = 0;
+                ROS_INFO_STREAM_THROTTLE(1,"dSmaxPubVal: " << maxValR << " I: " << maxValI << " G: " << maxValG << " #: " << feats_undistort->size() << " pf: " <<  p_pre->point_filter_num);
+                maxValR = 0; maxValI = 0; maxValG = 0;
                 for (int i = 0; i < feats_down_body->size(); i++)
                 {
                     if ( maxValI < feats_down_body->points[i].intensity ) maxValI = feats_down_body->points[i].intensity;
                     if ( maxValR < feats_down_body->points[i].reflectance ) maxValR = feats_down_body->points[i].reflectance;
+                    if ( maxValG < feats_down_body->points[i].gradient_mag ) maxValG = feats_down_body->points[i].gradient_mag;
                 }
-                ROS_INFO_STREAM_THROTTLE(1,"dSmaxPubVal: " << maxValR << " I: " << maxValI << " #: " << feats_down_body->size() << " pf: " <<  p_pre->point_filter_num);
+                ROS_INFO_STREAM_THROTTLE(1,"dSmaxPubVal: " << maxValR << " I: " << maxValI << " G: " << maxValG << " #: " << feats_down_body->size() << " pf: " <<  p_pre->point_filter_num);
             }
 
 
@@ -1808,6 +1851,94 @@ int main(int argc, char** argv)
             // publish_effect_world(pubLaserCloudEffect);
             if ( pubLaserCloudMap.getNumSubscribers() > 0 ) publish_map(pubLaserCloudMap);
 
+
+            if  ( pubRefCloud.getNumSubscribers() > 0 )
+            {
+                int num_ints = 0, num_neighs = 0;
+                for ( int i = 0; i < effct_feat_num; ++i )
+                {
+                    if ( !(*corr_int_selected)[i] ) continue;
+                    ++num_ints;
+                }
+                for ( int i = 0, m = 0; i < feats_down_size; ++i )
+                {
+                    if ( ! point_selected_int[i] ) continue;
+                    const PointVector &points_near = Nearest_Points[i];
+                    for ( int j = 0; j < NUM_MATCH_POINTS; ++j)
+                        if ( points_near[j].intensity > min_reflectance )
+                            ++num_neighs;
+                }
+
+                PointCloudXYZI::Ptr refCloudWorld( new PointCloudXYZI(num_ints, 1));
+                PointCloudXYZI::Ptr refCorCloudWorld( new PointCloudXYZI(num_neighs, 1));
+                for ( int i = 0, k = 0; i < effct_feat_num; ++i )
+                {
+                    if ( !(*corr_int_selected)[i] ) continue;
+                    //const PointType &int_p = corr_intvect->points[i];
+                    RGBpointBodyToWorld(&laserCloudOri->points[i], &refCloudWorld->points[k]);
+                    ++k;
+                }
+                for ( int i = 0, m = 0; i < feats_down_size; ++i )
+                {
+                    if ( ! point_selected_int[i] ) continue;
+                    const PointVector &points_near = Nearest_Points[i];
+                    for ( int j = 0; j < NUM_MATCH_POINTS; ++j)
+                        if ( points_near[j].intensity > min_reflectance )
+                        {
+                            refCorCloudWorld->points[m] = points_near[j];
+                            ++m;
+                        }
+                }
+                sensor_msgs::PointCloud2 laserCloudFullRes3;
+                pcl::toROSMsg(*refCloudWorld, laserCloudFullRes3);
+                laserCloudFullRes3.header.stamp = ros::Time().fromSec(lidar_end_time);
+                laserCloudFullRes3.header.frame_id = "camera_init";
+                pubRefCloud.publish(laserCloudFullRes3);
+
+                sensor_msgs::PointCloud2 laserCloudFullRes4;
+                pcl::toROSMsg(*refCorCloudWorld, laserCloudFullRes4);
+                laserCloudFullRes4.header.stamp = ros::Time().fromSec(lidar_end_time);
+                laserCloudFullRes4.header.frame_id = "camera_init";
+                pubRefCorCloud.publish(laserCloudFullRes4);
+
+//                for ( int i = 0; i < feats_down_size; ++i )
+//                {
+//                    if ( ! point_selected_int[i] ) continue;
+//                    const PointType & pt_lidar = feats_down_body->points[i];
+//                    const V3D p_lidar_(pt_lidar.x, pt_lidar.y, pt_lidar.z);
+//                    const V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_lidar_ + state_point.offset_T_L_I) + state_point.pos);
+
+//                    const float crow = (height-1) - project_row<float> ( p_lidar_.z(), p_lidar_.norm() );
+//                    const float ccol = project_col<float> ( p_lidar_.y(), p_lidar_.x() );
+
+//                    const PointVector &points_near = Nearest_Points[i];
+//                    for ( int j = 0; j < NUM_MATCH_POINTS; ++j)
+//                    {
+//                        const PointType &pt_p = points_near[j];
+//                        const V3D p_world(pt_p.x, pt_p.y, pt_p.z);
+//                        const V3D p_lidar = state_point.offset_R_L_I.conjugate() * ((state_point.rot.conjugate() * (p_world - state_point.pos)) - state_point.offset_T_L_I); // world -> lidar
+
+//                        const float row = (height-1) - project_row<float> ( p_lidar.z(), p_lidar.norm() );
+//                        const float col = project_col<float> ( p_lidar.y(), p_lidar.x() );
+//                        if ( row < 0 || row >= height || col < 0 || col >= width ) continue;
+
+//                        const bool too_far ( std::abs(ccol - col) > 10 || std::abs(crow - row) > 10 );
+//                        if ( too_far && (i&1023)==0 )
+//                        {
+//                            //ROS_ERROR_STREAM("i: " << i << " r: " << row << " " << crow << " c: " << col<< " " <<ccol << " p: " << p_lidar_.transpose() << " p: " << p_lidar.transpose() << " pw: "<< p_global.transpose() << " pw: " << p_world.transpose() );
+//                            continue;
+//                        }
+
+//                        const Eigen::Vector3f color(255* pt_p.intensity,0,0);
+//                        //const Eigen::Vector3f color = 255.f * colorFromNormal(Eigen::Vector3f(int_p.x,int_p.y,int_p.z).normalized());
+//                        //ROS_INFO_STREAM("r: " << row << " c: " << col << " pt: " << pt_p.x << " " << pt_p.y << " " << pt_p.z << " c: " << color.transpose() << " i: " << i << " n: " << effct_feat_num  << " c: " << corr_intvect->points.size() << " " << laserCloudOri->points.size());
+//                        int cr = max(0,min(height-1,int(round(row))));
+//                        int cc = max(0,min(width-1,int(round(col))));
+//                        ref_img.at<cv::Vec3b>(cr,cc) = cv::Vec3b(color(2),color(1),color(0));
+//                    }
+//                }
+//                pubRefImg.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", ref_img).toImageMsg());
+            }
 
             if  ( pubRefImg.getNumSubscribers() > 0 )
             {

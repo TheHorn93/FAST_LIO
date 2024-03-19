@@ -1,0 +1,44 @@
+<launch>
+<!-- Launch file for ouster OS1-64 LiDAR -->
+
+    <rosparam command="load" file="$(find fast_lio)/config/mulran_ouster64.yaml" />
+
+    <arg name="dont_load_params" value="true" /> <!-- loaded above already... -->
+    <arg name="prepare_for_parameter_estimation" default="false" />
+    <arg name="store_compensated" value="$(arg prepare_for_parameter_estimation)" />
+
+    <arg name="num_filter_points" default="4"/>
+    <arg name="size_surf" default="0.5"/>
+    <arg name="size_map" default="0.5"/>
+    <arg name="gm_threshold" default="0.5"/>
+    <arg name="requires_os_shift" default="true"/>
+
+    <param name="common/comp_lid_topic" type="string" value="/os1_points" if="$(arg prepare_for_parameter_estimation)" />
+
+    <arg name="use_channel" default="0"/>
+    <arg name="model" default="weighted_dasig_poly"/>
+    <arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 0.679481, "w_sigmoid": 4, "w_sigmoid_q": 6, "w_angle": -0.271467, "v_0": -2.05277, "v_1": 1.38137, "v_2": 0.00340678, "num_rings": 128}'/>
+    <!--arg name="params" default='{"type": "weighted_dasig_poly", "w_dist": 1.08169, "w_sigmoid": 4, "w_sigmoid_q": 6, "w_angle": -0.378004, "v_0": 0.643436, "v_1": 2.75854, "v_2": -0.461028, "num_rings": 64}' /-->
+    <!--arg name="params" default='{"type": "reflectivity weighted_dasig_poly", "w_dist": 0.044991, "w_sigmoid": 6, "w_sigmoid_q": 3.87035, "w_angle": -0.326376, "v_0": 1.021, "v_1": 0.438674, "v_2": 0.449664, "num_rings": 64}'/-->
+
+    <arg name="grad_w" default="0.0" if="$(arg prepare_for_parameter_estimation)" />
+    <arg name="grad_w" default="0.1" unless="$(arg prepare_for_parameter_estimation)" />
+    <param name="ref_grad_w" type="double" value="$(arg grad_w)" />
+    <param name="filter_size_surf" type="double" value="$(arg size_surf)" />
+    <param name="filter_size_map" type="double" value="$(arg size_map)" />
+    <param name="point_filter_num" type="int" value="$(arg num_filter_points)"/>
+    <param name="filter_use_channel" type="int" value="$(arg use_channel)"/>
+    <param name="comp_model" type="string" value="$(arg model)"/>
+    <param name="comp_params" type="string" value="$(arg params)"/>
+    <param name="requires_os_shift" type="bool" value="$(arg requires_os_shift)"/>
+    <param name="w_filter_size" type="int" value="1"/>
+    <param name="h_filter_size" type="int" value="1"/>
+    <param name="gm_threshold" type="double" value="$(arg gm_threshold)"/>
+
+    <include file="$(find fast_lio)/launch/mulran_ouster_64_eval.launch">
+        <arg name="dont_load_params" value="$(arg dont_load_params)"/>
+        <arg name="prepare_for_parameter_estimation" value="$(arg prepare_for_parameter_estimation)"/>
+        <arg name="store_compensated" value="$(arg store_compensated)"/>
+    </include>
+</launch>
+
