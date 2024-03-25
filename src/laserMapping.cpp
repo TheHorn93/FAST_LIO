@@ -101,6 +101,7 @@ std::shared_ptr<std::ofstream> pcdPosesFile = nullptr;
 bool use_reflec_enabled = false;
 double ref_grad_w = 0.1;
 double thrsd2 = 0.1, thrsd = 0.1;
+double min_gradient_mag = 0.1;
 std::string tum_out_fname, tum_comp_fname;
 int use_channel;
 
@@ -634,7 +635,7 @@ void map_incremental()
 }
 #include <rosbag/bag.h>
 template <typename PointCloudT, bool toWorld>
-void store_compensated_cloud ( typename PointCloudT::Ptr cloud, const uint64_t & prev_pcd_end_time  )
+void store_compensated_cloud ( typename PointCloudT::Ptr cloud, const uint64_t & prev_pcd_end_time, const std::string & topic  )
 {
     const size_t size = cloud->points.size();
     typename PointCloudT::Ptr laserCloudWorld;
@@ -663,8 +664,8 @@ void store_compensated_cloud ( typename PointCloudT::Ptr cloud, const uint64_t &
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         laserCloudmsg.header.stamp = ros::Time().fromNSec(lidar_ts_ns);
         laserCloudmsg.header.frame_id = "camera_init";
-        bagFile->write("/os_cloud/comp", laserCloudmsg.header.stamp,laserCloudmsg);
-        cout << "current scan saved to PCD_COMP: " << all_points_dir << " " << to_string(prev_pcd_end_time) << endl;
+        bagFile->write(topic, laserCloudmsg.header.stamp,laserCloudmsg);
+        cout << "current scan saved to PCD_COMP: " << all_points_dir << " " << to_string(prev_pcd_end_time) << " t: " << std::to_string(lidar_ts_ns)<< endl;
     }
     else
     {
@@ -779,9 +780,11 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
              size > 0 )
         {
             if ( meas_lidar_comp_hs )
-                store_compensated_cloud<PointCloudHesai,toWorld>( meas_lidar_comp_hs, prev_pcd_end_time );
+                store_compensated_cloud<PointCloudHesai,toWorld>( meas_lidar_comp_hs, prev_pcd_end_time,  "/hs_cloud/comp" );
             if ( meas_lidar_comp_os )
-                store_compensated_cloud<PointCloudOuster,toWorld>( meas_lidar_comp_os, prev_pcd_end_time );
+                store_compensated_cloud<PointCloudOuster,toWorld>( meas_lidar_comp_os, prev_pcd_end_time, "/os_cloud/comp" );
+            //if ( meas_lidar_comp_os )
+            //    store_compensated_cloud<PointCloudXYZI,toWorld>( feats_undistort, prev_pcd_end_time, "/os_cloud_dist/comp" );
             scan_wait_num = 0;
             prev_pcd_end_time = lidar_end_time * 1e9;
 
@@ -1014,7 +1017,7 @@ void h_share_model_with_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_datas
                 res_last[i] = abs(pd2);
 
                 if constexpr ( only_high_grad ) if ( point_body.reflectance < min_reflectance ) continue; //else ++num_larger;
-                if ( use_reflec_enabled && point_world.reflectance > min_reflectance )
+                if ( use_reflec_enabled && point_world.reflectance > min_reflectance && point_body.gradient_mag > min_gradient_mag )
                 {
                     // get reflectance gradient to surface
                     double error = 0, value = 0;
@@ -1261,7 +1264,7 @@ void h_share_model_without_reflec_on_plane(state_ikfom &s, esekfom::dyn_share_da
             }
         }
 
-        if ( use_reflec_enabled && point_world.reflectance > min_reflectance )
+        if ( use_reflec_enabled && point_world.reflectance > min_reflectance && point_body.gradient_mag > min_gradient_mag )
         {
             if ( ! point_selected_surf[i] ) continue;
             // get reflectance gradient to surface
@@ -1478,10 +1481,9 @@ int main(int argc, char** argv)
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("ref_grad_w", ref_grad_w, 0.1);
-    nh.param<double>("gm_threshold", thrsd, 0.1);
+    nh.param<double>("min_gradient_mag", min_gradient_mag, 0.1);
     ROS_INFO_STREAM("p_pre->lidar_type "<<p_pre->lidar_type);
 
-    thrsd2 = thrsd * thrsd;
     std::stringstream sstr;
     sstr << "./fast_lio_after_map_poses_";
     sstr << generatePathFileName( ref_grad_w, filter_size_surf_min, filter_size_map_min, p_pre->point_filter_num );
@@ -1497,7 +1499,7 @@ int main(int argc, char** argv)
         p_pre->use_compensated = true; // raw ouster nce
         //p_pre->point_filter_num = 1; // filtering in compensate node already!
     }
-    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << " th: " << thrsd << " f: " << tum_out_fname);
+    ROS_WARN_STREAM( "ref_grad_w = " << ref_grad_w << " ( " << ref_grad_w_orig << " ) " << " grad th: " << min_gradient_mag << " f: " << tum_out_fname);
     ROS_WARN_STREAM( "runtime_pos_log = " << (runtime_pos_log ? "true" : "false") );
     ROS_WARN_STREAM( "size_surf = " << filter_size_surf_min << ", size_map = " << filter_size_map_min );
     ROS_WARN_STREAM( "use_channel = " << use_channel );
@@ -1827,7 +1829,7 @@ int main(int argc, char** argv)
             if ( store_compensated_ )
             {
                 static Eigen::Vector3d last_pos = Eigen::Vector3d(state_point.pos[0]-2.,state_point.pos[1]-2.,state_point.pos[2]-2.); // take first one too
-                dist_passed = (last_pos - state_point.pos).norm() > 1;
+                dist_passed = (last_pos - state_point.pos).norm() > 0.5;
                 if ( dist_passed )
                 {
                     //std::cout << "dist: " << dist_passed << " cur: " << state_point.pos(0) << " " << state_point.pos(1) << " " << state_point.pos(2) << " last: " << last_pos.transpose() << std::endl;

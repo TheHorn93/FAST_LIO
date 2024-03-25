@@ -602,9 +602,34 @@ void Preprocess::ouster_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             }
         }
 
+        // compute, masks and gradients
+        cv::Mat img_th;
+        cv::threshold( img_m, img_th, min_intensity, 1. , cv::THRESH_BINARY );
+
+        constexpr int dilation_size = 1;
+        cv::Mat element = cv::getStructuringElement( cv::MORPH_RECT,
+                                                    cv::Size( 2*dilation_size + 1, 2*dilation_size+1 ),
+                                                    cv::Point( dilation_size, dilation_size ) );
+        cv::Mat img_mask;
+        cv::erode(img_th, img_mask, element );
+
+        if constexpr (print_info)
+        {
+            double min_val_pre, max_val_pre, min_val, max_val, min_val_mask, max_val_mask;
+            cv::minMaxLoc(img_m,&min_val_pre,&max_val_pre);
+            cv::minMaxLoc(img_th,&min_val,&max_val);
+            cv::minMaxLoc(img_mask,&min_val_mask,&max_val_mask);
+            ROS_INFO_STREAM("min: " << min_intensity << " img: " << min_val_pre << " " << max_val_pre << " th: " << min_val << " "<< max_val
+                            << " a: " << min_val_mask << " "<< max_val_mask << " type: " << img_th.type() << " " << img_mask.type() );
+        }
+
         cv::Mat_<float> gradx, grady, gradm;
         getScharrGradient<float,float>( img_m, &gradx, &grady );
         cv::sqrt(gradx.mul(gradx) + grady.mul(grady),gradm);
+        gradm = gradm.mul(img_mask);
+
+
+        // add points
         int offset = 0, row = 0, col = 0, last_i = 0;
         for (int i = 0; i < plsize; ++i, ++col)
         {
@@ -650,6 +675,11 @@ void Preprocess::ouster_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             cv::imwrite("./rangec.png",imgc);
             cv::imwrite("./rangei.png",imgi);
 
+            cv::Mat img_th255; img_th.convertTo(img_th255,CV_8UC1,255.);
+            cv::Mat img_mask255; img_mask.convertTo(img_mask255,CV_8UC1,255.);
+            cv::imwrite("./range_thzero.png",img_th255);
+            cv::imwrite("./range_eroded.png",img_mask255);
+
             cv::Mat imgd = cv::Mat::zeros(height, width, CV_8UC1);
             int offset = 0, row = 0, col = 0;
             for (int i = 0; i < plsize; ++i, ++col)
@@ -673,20 +703,20 @@ void Preprocess::ouster_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             cv::imwrite("./ranged.png",imgd);
             // pl_full is now correctly ordered!
 
-
             cv::Mat_<float> imgi2;
             imgi.assignTo(imgi2,CV_32FC1);
-            cv::Mat_<float> gradx;
-            cv::Mat_<float> grady;
-            getScharrGradient<float,float>( imgi2, &gradx, &grady );
-            //gradx *= 55;grady *= 55;
-            cv::Mat_<float> gradm;
-            cv::sqrt(gradx.mul(gradx) + grady.mul(grady),gradm);
+//            cv::Mat_<float> gradx;
+//            cv::Mat_<float> grady;
+//            getScharrGradient<float,float>( imgi2, &gradx, &grady );
+//            //gradx *= 55;grady *= 55;
+//            cv::Mat_<float> gradm;
+//            cv::sqrt(gradx.mul(gradx) + grady.mul(grady),gradm);
 //            gradm *= 32;
 //            gradx *= 32;
 //            grady *= 32;
 
-            double minV = 0, maxV = 0, minVs = 0, maxVs = 0;
+            double minV = 0, maxV = 0;
+//            double minVs = 0, maxVs = 0;
             cv::minMaxLoc(gradm, &minV, &maxV);
 //            cv::Mat imgx, imgy, imgm;
 //            gradx.assignTo(imgx,CV_8UC1);
@@ -695,19 +725,19 @@ void Preprocess::ouster_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
             cv::imwrite("./rangedx.png",gradx);
             cv::imwrite("./rangedy.png",grady);
             cv::imwrite("./rangedm.png",gradm);
-            cv::Mat grad_x, grad_y;
+//            cv::Mat grad_x, grad_y;
             //cv::Sobel(imgi2, grad_x, CV_32FC1, 1, 0, 3, 1, 0, cv::BORDER_DEFAULT);
             //cv::Sobel(imgi2, grad_y, CV_32FC1, 0, 1, 3, 1, 0, cv::BORDER_DEFAULT);
-            cv::Scharr(imgi2, grad_x, CV_32FC1, 1, 0);
-            cv::Scharr(imgi2, grad_y, CV_32FC1, 0, 1);
-            cv::imwrite("./rangedsx.png",grad_x);
-            cv::imwrite("./rangedsy.png",grad_y);
-            cv::Mat grad_m;
-            cv::sqrt(grad_x.mul(grad_x) + grad_y.mul(grad_y), grad_m);
-            cv::minMaxLoc(grad_m, &minVs, &maxVs);
-            cv::imwrite("./rangedsm.png",grad_m);
+//            cv::Scharr(imgi2, grad_x, CV_32FC1, 1, 0);
+//            cv::Scharr(imgi2, grad_y, CV_32FC1, 0, 1);
+//            cv::imwrite("./rangedsx.png",grad_x);
+//            cv::imwrite("./rangedsy.png",grad_y);
+//            cv::Mat grad_m;
+//            cv::sqrt(grad_x.mul(grad_x) + grad_y.mul(grad_y), grad_m);
+//            cv::minMaxLoc(grad_m, &minVs, &maxVs);
+//            cv::imwrite("./rangedsm.png",grad_m);
 
-            ROS_INFO_STREAM("vals: " << minV << " " << minVs << " " << maxV << " " << maxVs );
+            ROS_INFO_STREAM("vals: " << minV << " " << maxV ); //<< " " << minVs<< " " << maxVs );
         }
 
     }
